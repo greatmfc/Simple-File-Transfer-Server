@@ -23,14 +23,9 @@
 #include <sys/uio.h>
 
 #define DEFAULT_PORT 9007
-#define IOV_NUM 8
+#define IOV_NUM 4
 using namespace std;
 
-enum
-{
-    RECEIVE_FILE_NAME,
-    RECEIVE_OK,
-};
 struct data_info
 {
     unsigned fd;
@@ -87,6 +82,11 @@ setup::setup(char* ip_addr,int port)
     memcpy(&addr.sin_addr, &target_addr, sizeof(target_addr));
     addr.sin_port = htons(port);
     socket_fd = socket(AF_INET, SOCK_STREAM, 0); //创建一个套接字
+    int ret = connect(socket_fd, (struct sockaddr*)&addr, sizeof(addr));
+    if (ret < 0) {
+        perror("Connect failed");
+        exit(1);
+    }
 }
 
 setup::~setup()
@@ -115,33 +115,41 @@ void setup::receive_loop()
         write(to_sock, &confirm_code, sizeof(confirm_code));
         void* buf = malloc(size);
         int tmp = size;
+        data_info* di = new data_info();
+        di->bytes_to_deal_with = size;
+        di->fd = to_sock;
+        di->iov.iov_base = buf;
+        di->iov.iov_len = size;
         while (1)
         {
-            ret=recv(to_sock, buf, size, 0);
-            tmp -= ret;
-            if (tmp == 0) {
-                break;
-            }
-            else if (ret < 0)
+            ret=readv(to_sock, &di->iov, IOV_NUM);
+            if (ret < 0)
             {
                 perror("Receieve failed: ");
                 exit(1);
             }
+            di->bytes_to_deal_with -= ret;
+            if (di->bytes_to_deal_with <= 0) {
+                break;
+            }
         }
         confirm_code = '0';
         write(to_sock, &confirm_code, sizeof(confirm_code));
-        int jds = size;
+        di->bytes_to_deal_with = size;
+        di->fd = write_fd;
 		for (;;) {
-			ret = write(write_fd, buf, size);
+			ret = writev(write_fd, &di->iov, IOV_NUM);
 			if (ret < 0) {
 				perror("Server write to file failed");
 				exit(1);
 			}
-            jds -= ret;
-            if (jds <= 0) {
+            di->bytes_to_deal_with -= ret;
+            if (di->bytes_to_deal_with <= 0) {
                 break;
             }
 		}
+        free(buf);
+        delete di;
         close(to_sock);
         cout << "Success on receive files" << endl;
     }
@@ -196,6 +204,7 @@ void setup::write_to(char* path)
     if (flag != '0') {
         fprintf(stderr, "Something wrong with server...\n");
     }
+    free(buf);
     close(socket_fd);
     delete di;
 }
@@ -207,6 +216,10 @@ static void usage() {
 }
 
 static void check_file(char* path) {
+    if (strchr(path, '/') == NULL) {
+        fprintf(stderr, "Invalid path.\n");
+        exit(1);
+    }
     struct stat st;
     stat(path, &st);
     if (!S_ISREG(st.st_mode)) {
@@ -234,6 +247,7 @@ int main(int argc, char* argv[])
     }
     else
     {
+        check_file(argv[2]);
         char* ip, * port;
         port = strchr(argv[1], ':');
         if (port == NULL) {
@@ -245,13 +259,6 @@ int main(int argc, char* argv[])
         ip = (char*)malloc(sz+1);
         strncpy(ip, argv[1], sz);
         setup st(ip, atoi(port));
-        int ret = connect(st.socket_fd, (struct sockaddr*)&st.addr, sizeof(st.addr));
-        if (ret < 0) {
-            perror("Connect failed");
-            exit(1);
-        }
-        assert(ret >= 0);
-        check_file(argv[2]);
         st.write_to(argv[2]);
         free(ip);
     }
