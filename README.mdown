@@ -1,1 +1,19 @@
-file_exchange
+# Simple-File-Transfer
+
+Use it to transfer your files between two different linux host.
+
+## HOWTOUSE
+
+Download the `main.cpp` file into a directory and type `g++ main.cpp -o sft` in both two linux host.
+
+Type `./sft -l` in the receiving host.
+
+Type `./sft [receiving-ip:9007] [file-PATH]` like `./sft 192.168.100.5:9007 ./file`.
+
+Then you are able to see hints showed on terminal.
+
+Check the file in the same directory of `sft` in host.
+
+Press ^c before you check.
+
+Enjoy!
