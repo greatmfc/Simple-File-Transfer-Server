@@ -60,7 +60,7 @@ setup::setup()
 	int flag = 1;
 	setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
     int ret = bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
-    assert(ret>=0);
+    assert(ret >= 0);
 }
 
 setup::setup(char* ip_addr,int port)
@@ -144,14 +144,17 @@ void setup::receive_loop()
 				exit(1);
 			}
             di->bytes_to_deal_with -= ret;
+            di->iov.iov_len -= ret;
             if (di->bytes_to_deal_with <= 0) {
                 break;
             }
 		}
+        cout << "Success on receive file: " << msg << endl;
+        free(msg);
         free(buf);
         delete di;
+        close(write_fd);
         close(to_sock);
-        cout << "Success on receive files" << endl;
     }
 }
 void setup::write_to(char* path)
@@ -164,10 +167,22 @@ void setup::write_to(char* path)
     struct stat st;
     fstat(file_fd, &st);
     void* buf = malloc(st.st_size);
-    int ret=read(file_fd, buf, st.st_size);
-    if (ret < 0) {
-        perror("Client read from file failed");
-        exit(1);
+    struct data_info* di=new data_info();
+    di->fd = file_fd;
+    di->iov.iov_base = buf;
+    di->bytes_to_deal_with = 0;
+    di->iov.iov_len = st.st_size;
+    int ret = 0;
+    for (;;) {
+		ret = readv(file_fd, &di->iov, IOV_NUM);
+		if (ret < 0) {
+			perror("Client read from file failed");
+			exit(1);
+		}
+        di->bytes_to_deal_with += ret;
+        if (di->bytes_to_deal_with >= st.st_size) {
+            break;
+        }
     }
     char *msg = strrchr(path, '/') + 1;
     strcat(msg, ":");
@@ -176,14 +191,9 @@ void setup::write_to(char* path)
     char flag;
     ret = recv(socket_fd, &flag, sizeof(flag), 0);
     if (flag != '1') {
-        printf("Receive side failed");
+        printf("Receive flag from server failed");
         exit(1);
     }
-    struct data_info* di=new data_info();
-    di->fd = file_fd;
-    di->iov.iov_base = buf;
-    di->bytes_to_deal_with = st.st_size;
-    di->iov.iov_len = st.st_size;
     for (;;) {
         ret = writev(socket_fd, &di->iov, IOV_NUM);
         if (ret < 0) {
