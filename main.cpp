@@ -21,15 +21,17 @@
 #include <cassert>
 #include <sys/stat.h>
 #include <sys/uio.h>
+#include <sys/mman.h>
 
 #define DEFAULT_PORT 9007
-#define IOV_NUM 4
+#define IOV_NUM 1
 using namespace std;
 
 struct data_info
 {
 	unsigned fd;
 	unsigned bytes_to_deal_with;
+	char* buf;
 	struct iovec iov;
 };
 class setup
@@ -113,45 +115,43 @@ void setup::receive_loop()
 		int write_fd = open(full_msg, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 		char confirm_code = '1';
 		write(to_sock, &confirm_code, sizeof(confirm_code));
-		void* buf = malloc(size);
-		int tmp = size;
 		data_info* di = new data_info();
 		di->bytes_to_deal_with = size;
 		di->fd = to_sock;
-		di->iov.iov_base = buf;
-		di->iov.iov_len = size;
-		while (1)
+		di->buf = (char*)malloc(size);
+		char* buf = di->buf;
+		while (size)
 		{
-			ret=readv(to_sock, &di->iov, IOV_NUM);
+			ret=read(to_sock, buf, size);
 			if (ret < 0)
 			{
 				perror("Receieve failed: ");
 				exit(1);
 			}
-			di->bytes_to_deal_with -= ret;
-			if (di->bytes_to_deal_with <= 0) {
-				break;
-			}
+			size -= ret;
+			buf += ret;
 		}
+		/*
 		confirm_code = '0';
 		write(to_sock, &confirm_code, sizeof(confirm_code));
-		di->bytes_to_deal_with = size;
+		*/
 		di->fd = write_fd;
+		auto tmp = di->buf;
 		for (;;) {
-			ret = writev(write_fd, &di->iov, IOV_NUM);
+			ret = write(write_fd, di->buf, di->bytes_to_deal_with);
 			if (ret < 0) {
 				perror("Server write to file failed");
 				exit(1);
 			}
 			di->bytes_to_deal_with -= ret;
-			di->iov.iov_len -= ret;
+			di->buf += ret;
 			if (di->bytes_to_deal_with <= 0) {
 				break;
 			}
 		}
 		cout << "Success on receive file: " << msg << endl;
 		free(msg);
-		free(buf);
+		free(tmp);
 		delete di;
 		close(write_fd);
 		close(to_sock);
@@ -166,24 +166,13 @@ void setup::write_to(char* path)
 	}
 	struct stat st;
 	fstat(file_fd, &st);
-	void* buf = malloc(st.st_size);
+	void* buf = mmap(0, st.st_size, PROT_READ, MAP_PRIVATE, file_fd, 0);
 	struct data_info* di=new data_info();
 	di->fd = file_fd;
 	di->iov.iov_base = buf;
-	di->bytes_to_deal_with = 0;
+	di->bytes_to_deal_with = st.st_size;
 	di->iov.iov_len = st.st_size;
 	int ret = 0;
-	for (;;) {
-		ret = readv(file_fd, &di->iov, IOV_NUM);
-		if (ret < 0) {
-			perror("Client read from file failed");
-			exit(1);
-		}
-		di->bytes_to_deal_with += ret;
-		if (di->bytes_to_deal_with >= st.st_size) {
-			break;
-		}
-	}
 	char *msg = strrchr(path, '/') + 1;
 	strcat(msg, ":");
 	strcat(msg, to_string(st.st_size).data());
@@ -200,22 +189,23 @@ void setup::write_to(char* path)
 			perror("Write to socket failed");
 			exit(1);
 		}
+		di->iov.iov_len -= ret;
+		di->iov.iov_base = di->iov.iov_base + ret;
 		di->bytes_to_deal_with -= ret;
 		if (di->bytes_to_deal_with <= 0) {
 			break;
 		}
-		di->iov.iov_len -= ret;
-		di->iov.iov_base = di->iov.iov_base + ret;
 	}
-	ret = recv(socket_fd, &flag, sizeof(flag), 0);
+	close(socket_fd);
+	//ret = recv(socket_fd, &flag, sizeof(flag), 0);
 	if (ret < 0) {
 		perror("Receive end flag failed");
 	}
 	if (flag != '0') {
-		fprintf(stderr, "Something wrong with server...\n");
+		//fprintf(stderr, "Something wrong with server...\n");
 	}
-	free(buf);
-	close(socket_fd);
+	munmap(buf, st.st_size);
+	close(file_fd);
 	delete di;
 }
 
@@ -227,9 +217,14 @@ static void usage() {
 
 static void check_file(char* path) {
 	if (strchr(path, '/') == NULL) {
-		fprintf(stderr, "Invalid path.\n");
+		fprintf(stderr, "Invalid path. Please check the path.\n");
 		exit(1);
 	}
+	if (access(path, R_OK) != 0) {
+		fprintf(stderr, "Fail to access the file. Please check read permission.\n");
+		exit(1);
+	}
+	
 	struct stat st;
 	stat(path, &st);
 	if (!S_ISREG(st.st_mode)) {
@@ -241,36 +236,39 @@ static void sig_hanl(int sig) {
 	cout << "\rShutting down..." << endl;
 	exit(0);
 }
-
-int main(int argc, char* argv[])
-{
-	if (argc < 2 || argc > 3) {
-		usage();
-		exit(1);
-	}
-	if (strcmp(argv[1],"-l") == 0) {
-		setup st;
-		int ret = listen(st.socket_fd, 5);
-		assert(ret >= 0);
-		signal(SIGINT, sig_hanl);
-		st.receive_loop();
-	}
-	else
-	{
-		check_file(argv[2]);
-		char* ip, * port;
-		port = strchr(argv[1], ':');
+static void parse_arg(char* arg, char* ip, char* port) {
+		port = strchr(arg, ':');
 		if (port == NULL) {
 			fprintf(stderr, "Fail to locate port number.\n");
 			exit(1);
 		}
 		port += 1;
-		unsigned sz = strcspn(argv[1], ":");
+		unsigned sz = strcspn(arg, ":");
 		ip = (char*)malloc(sz+1);
-		strncpy(ip, argv[1], sz);
+		strncpy(ip, arg, sz);
+}
+
+int main(int argc, char* argv[])
+{
+	if (argc > 3) {
+		usage();
+		exit(1);
+	}
+	if (argc == 3) {
+		char* ip, * port;
+		parse_arg(argv[1], ip, port);
+		check_file(argv[2]);
 		setup st(ip, atoi(port));
 		st.write_to(argv[2]);
 		free(ip);
+	}
+	else
+	{
+		setup st;
+		int ret = listen(st.socket_fd, 5);
+		assert(ret >= 0);
+		signal(SIGINT, sig_hanl);
+		st.receive_loop();
 	}
 	cout << "Success on sending. Please check the server." << endl;
 	return 0;

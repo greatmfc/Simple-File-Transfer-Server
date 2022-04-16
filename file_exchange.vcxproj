@@ -84,6 +84,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="cp.cpp" />
   </ItemGroup>
   <ItemGroup>
   </ItemGroup>
