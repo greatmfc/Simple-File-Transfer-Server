@@ -84,9 +84,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="cp.cpp" />
+    <ClCompile Include="sft.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="sft.h" />
   </ItemGroup>
   <ItemDefinitionGroup />
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
