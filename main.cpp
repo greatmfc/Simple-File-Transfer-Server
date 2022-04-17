@@ -39,66 +39,96 @@ static void sig_hanl(int sig) {
 	exit(0);
 }
 
-static void parse_arg(char* arg, char* ip, char* port) {
-		port = strchr(arg, ':');
-		if (port == NULL) {
-			fprintf(stderr, "Fail to locate port number.\n");
-			exit(1);
-		}
-		port += 1;
-		unsigned sz = strcspn(arg, ":");
-		ip = (char*)malloc(sz+1);
-		strncpy(ip, arg, sz);
+static void parse_arg(char* arg, char* port, char* ip) {
+	char* tmp = strchr(arg, ':');
+	if (tmp == NULL) {
+		fprintf(stderr, "Fail to locate port number.\n");
+		exit(1);
+	}
+	tmp += 1;
+	strcpy(port, tmp);
+	unsigned sz = strcspn(arg, ":");
+	if (ip == nullptr) {
+		perror("Failed to allocate memory.\n");
+		exit(1);
+	}
+	strncpy(ip, arg, sz);
 }
 
 int main(int argc, char* argv[])
 {
-	if (argc > 3) {
-		usage();
-	}
 	int opt = 0;
 	int check_mode = 0;
-	char* mesg, * path;
-	while ((opt = getopt(argc, argv, "cm:f:hv") != EOF)) {
+	char* mesg = nullptr;
+	char* path = nullptr;
+	char mode[8] = "cm:f:hv";
+	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{
-			case 'c': check_mode = 1; break;
-			case 'm': mesg = optarg; break;
-			case 'f': path = optarg; break;
-			case 'h': usage(); break;
-			case 'v': version(); break;
+		case 'c':
+		{
+			check_mode = 1;
+			break; 
+		}
+		case 'm':
+		{
+			mesg = optarg;
+			break; 
+		}
+		case 'f':
+		{
+			path = optarg;
+			break; 
+		}
+		case 'h':
+		{
+			usage();
+			break; 
+		}
+		case 'v':
+		{
+			version();
+			break; 
+		}
 			default: break;
 		}
 	}
-	if (optind == argc) {
-		fprintf(stderr, "Missing ip address!\n");
-		exit(3);
+	if (argc != 1) {
+		if (optind == argc) {
+			fprintf(stderr, "Missing ip address!\n");
+			exit(3);
+		}
 	}
 	if (path != nullptr) {
 		char* ip, * port;
-		parse_arg(argv[optind], ip, port);
+		ip = (char*)malloc(16);
+		port = (char*)malloc(8);
+		parse_arg(argv[optind], port, ip);
 		check_file(path);
 		setup st(ip, atoi(port));
 		send_file sf(&st, path);
 		sf.write_to();
 		free(ip);
+		free(port);
 	}
 	else if (mesg != nullptr)
 	{
 		char* ip, * port;
-		parse_arg(argv[optind], ip, port);
+		ip = (char*)malloc(16);
+		port = (char*)malloc(8);
+		parse_arg(argv[optind], port, ip);
 		setup st(ip, atoi(port));
 		send_msg sm(&st, mesg);
 		sm.write_to();
 		free(ip);
+		free(port);
 	}
 	else
 	{
 		signal(SIGINT, sig_hanl);
-		receive_loop rl;
+		setup st;
+		receive_loop rl(&st);
 		rl.loop();
-		//setup st;
-		//st.receive_loop();
 	}
 	cout << "Success on sending. Please check the server." << endl;
 	return 0;

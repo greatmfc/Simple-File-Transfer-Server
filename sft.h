@@ -42,11 +42,9 @@ class setup
 public:
 	setup();
 	setup(char* ip_addr,int port);
-	~setup();
+	~setup() = default;
 	int socket_fd;
 	struct sockaddr_in addr;
-	void receive_loop();
-	void write_to(char* path);
 
 private:
 	unsigned long target_addr;

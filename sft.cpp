@@ -33,10 +33,10 @@ int receive_loop::decide_action()
 	char msg[8];
 	int ret = recv(accepted_fd, msg, 8, 0);
 	if (ret < 0) {
-		perror("Read from client failed");
+		perror("Read from client failed when decide action:");
 		exit(1);
 	}
-	char confirm_code = '0';
+	char confirm_code = '1';
 	write(accepted_fd, &confirm_code, sizeof(confirm_code));
 	if (strcmp(msg, "file") == 0) {
 		return 1;
@@ -53,13 +53,13 @@ void receive_loop::deal_with_file()
 	char full_msg[64]="./";
 	int ret = recv(accepted_fd, msg, 48, 0);
 	if (ret < 0) {
-		perror("Read from client failed");
+		perror("Read from client failed.");
 		exit(1);
 	}
 	int size = atoi(strchr(msg, ':')+1);
 	strncat(full_msg, msg, strcspn(msg, ":"));
 	int write_fd = open(full_msg, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	char confirm_code = '1';
+	char confirm_code = '0';
 	write(accepted_fd, &confirm_code, sizeof(confirm_code));
 	di = new data_info();
 	di->bytes_to_deal_with = size;
@@ -82,7 +82,7 @@ void receive_loop::deal_with_file()
 	for (;;) {
 		ret = write(write_fd, di->buf, di->bytes_to_deal_with);
 		if (ret < 0) {
-			perror("Server write to file failed");
+			perror("Server write to file failed.");
 			exit(1);
 		}
 		di->bytes_to_deal_with -= ret;
@@ -91,12 +91,12 @@ void receive_loop::deal_with_file()
 			break;
 		}
 	}
+	cout << "Success on receive file: " << msg << endl;
 	free(msg);
 	free(buf);
 	delete di;
 	close(write_fd);
 	close(accepted_fd);
-	cout << "Success on receive file: " << msg << endl;
 }
 
 void receive_loop::deal_with_mesg()
@@ -117,7 +117,7 @@ void receive_loop::deal_with_mesg()
 	write(log_fd, buffer, strlen(buffer));
 	close(log_fd);
 	close(accepted_fd);
-	cout << "Success on receive message: " << buffer << endl;
+	cout << "Success on receive message: " << buffer;
 }
 
 send_file::send_file(setup* s, char* path)
@@ -146,8 +146,8 @@ void send_file::write_to()
 	int ret = 0;
 	char flag;
 	ret = recv(fd, &flag, sizeof(flag), 0);
-	if (flag != '0') {
-		printf("Receive flag from server failed1");
+	if (flag != '1') {
+		printf("Receive flag from server failed1.\n");
 		exit(1);
 	}
 	char *msg = strrchr(file_path, '/') + 1;
@@ -155,8 +155,9 @@ void send_file::write_to()
 	strcat(msg, to_string(st.st_size).data());
 	write(fd, msg, strlen(msg));
 	ret = recv(fd, &flag, sizeof(flag), 0);
-	if (flag != '1') {
-		printf("Receive flag from server failed2");
+	assert(ret >= 0);
+	if (flag != '0') {
+		printf("Receive flag from server failed2.\n");
 		exit(1);
 	}
 	for (;;) {
@@ -173,7 +174,6 @@ void send_file::write_to()
 		}
 	}
 	close(fd);
-	//ret = recv(socket_fd, &flag, sizeof(flag), 0);
 	if (ret < 0) {
 		perror("Receive end flag failed");
 	}
@@ -213,132 +213,12 @@ setup::setup(char* ip_addr,int port)
 	}
 	memcpy(&addr.sin_addr, &target_addr, sizeof(target_addr));
 	addr.sin_port = htons(port);
-	socket_fd = socket(AF_INET, SOCK_STREAM, 0); //创建一个套接字
+	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	int ret = connect(socket_fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (ret < 0) {
 		perror("Connect failed");
 		exit(1);
 	}
-}
-
-setup::~setup()
-{
-}
-void setup::receive_loop()
-{
-	int ret = listen(socket_fd, 5);
-	assert(ret >= 0);
-	while (1) {
-		socklen_t len = sizeof(target_addr);
-		int to_sock = accept(socket_fd, (struct sockaddr*)&target_addr, &len);
-		if (to_sock < 0) {
-			perror("Accept failed");
-			exit(1);
-		}
-		char* msg = (char*)malloc(48);
-		char full_msg[64]="./";
-		int ret = recv(to_sock, msg, 48, 0);
-		if (ret < 0) {
-			perror("Read from client failed");
-			exit(1);
-		}
-		int size = atoi(strchr(msg, ':')+1);
-		strncat(full_msg, msg, strcspn(msg, ":"));
-		int write_fd = open(full_msg, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-		char confirm_code = '1';
-		write(to_sock, &confirm_code, sizeof(confirm_code));
-		data_info* di = new data_info();
-		di->bytes_to_deal_with = size;
-		di->fd = to_sock;
-		di->buf = (char*)malloc(size);
-		char* buf = di->buf;
-		while (size)
-		{
-			ret=read(to_sock, buf, size);
-			if (ret < 0)
-			{
-				perror("Receieve failed: ");
-				exit(1);
-			}
-			size -= ret;
-			buf += ret;
-		}
-		/*
-		confirm_code = '0';
-		write(to_sock, &confirm_code, sizeof(confirm_code));
-		*/
-		di->fd = write_fd;
-		auto tmp = di->buf;
-		for (;;) {
-			ret = write(write_fd, di->buf, di->bytes_to_deal_with);
-			if (ret < 0) {
-				perror("Server write to file failed");
-				exit(1);
-			}
-			di->bytes_to_deal_with -= ret;
-			di->buf += ret;
-			if (di->bytes_to_deal_with <= 0) {
-				break;
-			}
-		}
-		cout << "Success on receive file: " << msg << endl;
-		free(msg);
-		free(tmp);
-		delete di;
-		close(write_fd);
-		close(to_sock);
-	}
-}
-void setup::write_to(char* path)
-{
-	int file_fd = open(path, O_RDONLY);
-	if (file_fd < 0) {
-		perror("Open file failed");
-		exit(1);
-	}
-	struct stat st;
-	fstat(file_fd, &st);
-	void* buf = mmap(0, st.st_size, PROT_READ, MAP_PRIVATE, file_fd, 0);
-	data_info* di=new data_info();
-	di->fd = file_fd;
-	di->iov.iov_base = buf;
-	di->bytes_to_deal_with = st.st_size;
-	di->iov.iov_len = st.st_size;
-	int ret = 0;
-	char *msg = strrchr(path, '/') + 1;
-	strcat(msg, ":");
-	strcat(msg, to_string(st.st_size).data());
-	write(socket_fd, msg, strlen(msg));
-	char flag;
-	ret = recv(socket_fd, &flag, sizeof(flag), 0);
-	if (flag != '1') {
-		printf("Receive flag from server failed");
-		exit(1);
-	}
-	for (;;) {
-		ret = writev(socket_fd, &di->iov, IOV_NUM);
-		if (ret < 0) {
-			perror("Write to socket failed");
-			exit(1);
-		}
-		di->iov.iov_len -= ret;
-		di->iov.iov_base = di->iov.iov_base + ret;
-		di->bytes_to_deal_with -= ret;
-		if (di->bytes_to_deal_with <= 0) {
-			break;
-		}
-	}
-	close(socket_fd);
-	//ret = recv(socket_fd, &flag, sizeof(flag), 0);
-	if (ret < 0) {
-		perror("Receive end flag failed");
-	}
-	if (flag != '0') {
-		//fprintf(stderr, "Something wrong with server...\n");
-	}
-	munmap(buf, st.st_size);
-	close(file_fd);
-	delete di;
 }
 
 send_msg::send_msg(setup* s, char* msg) : msg(msg)
@@ -350,26 +230,25 @@ send_msg::send_msg(setup* s, char* msg) : msg(msg)
 void send_msg::write_to()
 {
 	int ret = pre_action(fd, false, "message");
-	write(fd, msg, strlen(msg));
+	write(fd, msg, strlen(msg)+1);
 	close(fd);
 }
 
 int basic_action::pre_action(int fd, bool active, const char* msg)
 {
-	char msg1 = '1';
+	char msg1 = '0';
 	int ret = 0;
 	if (active) {
-		ret = write(fd, &msg1, sizeof(msg1));
+		ret = write(fd, &msg1, 8);
 		assert(ret >= 0);
 		return 1;
 	}
 	else
 	{
-		ret=write(fd, msg, strlen(msg));
+		ret=write(fd, msg, sizeof(msg));
 		assert(ret >= 0);
 		ret = read(fd, &msg1, sizeof(msg1));
 		assert(ret >= 0);
-		//ret = write(fd, &msg, sizeof(msg));
 		if (msg1 != '0') {
 			return 1;
 		}
