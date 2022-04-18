@@ -2,18 +2,30 @@
 
 Use it to transfer your files between two different linux host.
 
+## HOWTOBUILD
+
+Type the codes below in your terminal:
+
+`git clone https://github.com/greatmfc/simple-file-transfer`
+
+`cd simple-file-transfer/`
+
+ `make`
+
 ## HOWTOUSE
 
-Download the `main.cpp` file into a directory and type `g++ main.cpp -o sft` in both two linux host.
+Type `./sft -h`for help.
 
-Type `./sft -l` in the receiving host.
+```c
+usage:
+	"sft [option] [argument] ip:port\n"
+	"options: \n"
+	"-c				Check mode for identification before receiving.\n"
+	"-f				File mode for sending file.Argument is your file's path.\n"
+	"-m				Message mode for sending message.Argument is your content.\n"
+	"-h				This information.\n"
+	"-v				Display version.\n"
+	"Example:		./sft -f ./file 255.255.255.0:8888\n"
+	"				./sft -m hello,world! 255.255.255.0:8888\n"
+```
 
-Type `./sft [receiving-ip:9007] [file-PATH]` like `./sft 192.168.100.5:9007 ./file`.
-
-Then you are able to see hints showed on terminal.
-
-Check the file in the same directory of `sft` in host.
-
-Press ^c before you check.
-
-Enjoy!
