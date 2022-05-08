@@ -15,7 +15,7 @@
 #include <getopt.h>
 #include <strings.h>
 #include <ctime>
-#include <signal.h>
+#include <csignal>
 #include <exception>
 #include <iostream>
 #include <cassert>
@@ -53,10 +53,9 @@ private:
 
 class basic_action
 {
-public:
+protected:
 	basic_action() = default;
 	virtual ~basic_action() = default;
-protected:
 	int pre_action(int fd, bool active, const char* msg);
 	unsigned fd;
 	data_info* di;
