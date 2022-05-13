@@ -13,7 +13,6 @@
 #include <sys/param.h>
 #include <rpc/types.h>
 #include <getopt.h>
-#include <strings.h>
 #include <ctime>
 #include <csignal>
 #include <exception>
@@ -22,20 +21,29 @@
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <sys/mman.h>
+#include <sys/sendfile.h>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
 #define VERSION 1.416
 #define BUFFER_SIZE 1024
+#define MSG_LEN 1024
 using namespace std;
 
 typedef struct data_info
 {
 	unsigned fd;
-	unsigned bytes_to_deal_with;
+	ssize_t bytes_to_deal_with;
 	char* buf;
 	struct iovec iov;
 } data_info;
+
+enum MyEnum
+{
+	FILE_TYPE,
+	MESSAGE_TYPE,
+	NONE_TYPE
+};
 
 class setup
 {
@@ -56,10 +64,11 @@ class basic_action
 protected:
 	basic_action() = default;
 	virtual ~basic_action() = default;
-	int pre_action(int fd, bool active, const char* msg);
-	unsigned fd;
+	int pre_action(int fd);
+	unsigned socket_fd;
 	data_info* di;
 	int status_code;
+	char pre_msg[MSG_LEN];
 	setup* pt;
 };
 
@@ -70,11 +79,12 @@ public:
 	receive_loop(setup* s);
 	~receive_loop() = default;
 	void loop();
-	void deal_with_file();
-	void deal_with_mesg();
 
 private:
 	int decide_action();
+	void deal_with_file();
+	void deal_with_mesg();
+	void reset_buffers();
 	int accepted_fd;
 	struct sockaddr_in addr;
 	socklen_t len;

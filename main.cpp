@@ -49,9 +49,9 @@ static void parse_arg(char* arg, char* port, char* ip) {
 	}
 	tmp += 1;
 	strcpy(port, tmp);
-	unsigned sz = strcspn(arg, ":");
+	size_t sz = strcspn(arg, ":");
 	if (ip == nullptr) {
-		perror("Failed to allocate memory.\n");
+		perror("Failed to allocate memory");
 		exit(1);
 	}
 	strncpy(ip, arg, sz);
@@ -95,42 +95,33 @@ int main(int argc, char* argv[])
 			default: break;
 		}
 	}
-	if (argc != 1) {
-		if (optind == argc) {
-			fprintf(stderr, "Missing ip address!\n");
-			exit(3);
-		}
+	if (argc != 1 && optind == argc) {
+		fprintf(stderr, "Missing ip address!\n");
+		exit(3);
 	}
-	if (path != nullptr) {
-		char* ip, * port;
-		ip = (char*)malloc(16);
-		port = (char*)malloc(8);
-		parse_arg(argv[optind], port, ip);
-		check_file(path);
-		setup st(ip, atoi(port));
-		send_file sf(&st, path);
-		sf.write_to();
-		free(ip);
-		free(port);
-	}
-	else if (mesg != nullptr)
-	{
-		char* ip, * port;
-		ip = (char*)malloc(16);
-		port = (char*)malloc(8);
-		parse_arg(argv[optind], port, ip);
-		setup st(ip, atoi(port));
-		send_msg sm(&st, mesg);
-		sm.write_to();
-		free(ip);
-		free(port);
-	}
-	else
-	{
+	if (argc == 1) {
 		signal(SIGINT, sig_hanl);
 		setup st;
 		receive_loop rl(&st);
 		rl.loop();
+	}
+	else{
+		char* ip, * port;
+		ip = new char[16];
+		port = new char[8];
+		parse_arg(argv[optind], port, ip);
+		setup st(ip, atoi(port));
+		if (path != nullptr) {
+			check_file(path);
+			send_file sf(&st, path);
+			sf.write_to();
+		}
+		else if (mesg != nullptr) {
+			send_msg sm(&st, mesg);
+			sm.write_to();
+		}
+		delete ip;
+		delete port;
 	}
 	cout << "Success on sending. Please check the server." << endl;
 	return 0;

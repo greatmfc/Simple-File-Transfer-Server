@@ -5,73 +5,74 @@ receive_loop::receive_loop(setup* s)
 	pt = s;
 	addr = pt->addr;
 	len = sizeof(addr);
-	fd = pt->socket_fd;
+	socket_fd = pt->socket_fd;
 }
 
 void receive_loop::loop()
 {
-	int ret = listen(fd, 5);
+	int ret = listen(socket_fd, 5);
 	assert(ret >= 0);
 	while (1) {
-		accepted_fd = accept(fd, (struct sockaddr*)&addr, &len);
+		accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
 		if (accepted_fd < 0) {
 			perror("Accept failed");
 			exit(1);
 		}
+		reset_buffers();
 		status_code = decide_action();
-		if (status_code == 1) {
+		if (status_code == FILE_TYPE) {
 			deal_with_file();
 		}
-		else if (status_code == 2) {
+		else if (status_code == MESSAGE_TYPE) {
 			deal_with_mesg();
 		}
+		reset_buffers();
 	}
 }
 
 int receive_loop::decide_action()
 {
-	char msg[8];
-	int ret = recv(accepted_fd, msg, 8, 0);
-	if (ret < 0) {
-		perror("Read from client failed when decide action:");
-		exit(1);
+	char msg1 = '1';
+	ssize_t ret = 0;
+	ret = read(accepted_fd, pre_msg, MSG_LEN);
+	if (ret <= 0) {
+		perror("Something happened while read from client");
+		close(accepted_fd);
+		goto end;
 	}
-	char confirm_code = '1';
-	write(accepted_fd, &confirm_code, sizeof(confirm_code));
-	if (strcmp(msg, "file") == 0) {
-		return 1;
+#ifdef DEBUG
+	cout << "Read msg from client: " << pre_msg << endl;
+#endif // DEBUG
+	write(accepted_fd, &msg1, sizeof(msg1));
+	switch (pre_msg[0])
+	{
+	case 'm':return MESSAGE_TYPE;
+	case 'f':return FILE_TYPE;
+	default:return NONE_TYPE;
 	}
-	else if (strcmp(msg, "message") == 0) {
-		return 2;
-	}
-	return 0;
+	end:return -1;
 }
 
 void receive_loop::deal_with_file()
 {
-	char* msg = (char*)malloc(48);
-	char full_msg[64]="./";
-	int ret = recv(accepted_fd, msg, 48, 0);
-	if (ret < 0) {
-		perror("Read from client failed.");
-		exit(1);
-	}
-	int size = atoi(strchr(msg, ':')+1);
-	strncat(full_msg, msg, strcspn(msg, ":"));
-	int write_fd = open(full_msg, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	char confirm_code = '0';
-	write(accepted_fd, &confirm_code, sizeof(confirm_code));
+	char full_path[64]="./";
+	char* msg = pre_msg;
+	msg += 2;
+	ssize_t size = atoi(strchr(msg, '/')+1);
+	strncat(full_path, msg, strcspn(msg, "/"));
+	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	di = new data_info();
 	di->bytes_to_deal_with = size;
 	di->fd = accepted_fd;
-	di->buf = (char*)malloc(size);
+	di->buf = new char[size];
 	char* buf = di->buf;
+	ssize_t ret = 0;
 	while (size)
 	{
 		ret=read(accepted_fd, buf, size);
 		if (ret < 0)
 		{
-			perror("Receieve failed: ");
+			perror("Receieve failed");
 			exit(1);
 		}
 		size -= ret;
@@ -82,7 +83,7 @@ void receive_loop::deal_with_file()
 	for (;;) {
 		ret = write(write_fd, di->buf, di->bytes_to_deal_with);
 		if (ret < 0) {
-			perror("Server write to file failed.");
+			perror("Server write to local failed");
 			exit(1);
 		}
 		di->bytes_to_deal_with -= ret;
@@ -91,9 +92,8 @@ void receive_loop::deal_with_file()
 			break;
 		}
 	}
-	cout << "Success on receive file: " << msg << endl;
-	free(msg);
-	free(buf);
+	cout << "Success on receiving file: " << msg << endl;
+	delete buf;
 	delete di;
 	close(write_fd);
 	close(accepted_fd);
@@ -101,11 +101,8 @@ void receive_loop::deal_with_file()
 
 void receive_loop::deal_with_mesg()
 {
-	int ret = 1;
-	while (ret)
-	{
-		ret = read(accepted_fd, buffer, BUFFER_SIZE);
-	}
+	char* pt = pre_msg;
+	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	time_t rawtime;
 	struct tm* time_info;
@@ -117,19 +114,24 @@ void receive_loop::deal_with_mesg()
 	write(log_fd, buffer, strlen(buffer));
 	close(log_fd);
 	close(accepted_fd);
-	cout << "Success on receive message: " << buffer;
+	cout << "Success on receiving message: " << buffer;
+}
+
+void receive_loop::reset_buffers()
+{
+	memset(pre_msg, 0, sizeof pre_msg);
+	memset(buffer, 0, sizeof buffer);
 }
 
 send_file::send_file(setup* s, char* path)
 {
 	pt = s;
 	file_path = path;
-	fd = pt->socket_fd;
+	socket_fd = pt->socket_fd;
 }
 
 void send_file::write_to()
 {
-	write(fd, "file", 5);
 	int file_fd = open(file_path, O_RDONLY);
 	if (file_fd < 0) {
 		perror("Open file failed");
@@ -137,49 +139,39 @@ void send_file::write_to()
 	}
 	struct stat st;
 	fstat(file_fd, &st);
-	void* buf = mmap(0, st.st_size, PROT_READ, MAP_PRIVATE, file_fd, 0);
-	di=new data_info();
-	di->fd = file_fd;
-	di->iov.iov_base = buf;
-	di->bytes_to_deal_with = st.st_size;
-	di->iov.iov_len = st.st_size;
-	int ret = 0;
-	char flag;
-	ret = recv(fd, &flag, sizeof(flag), 0);
-	if (flag != '1') {
-		printf("Receive flag from server failed1.\n");
-		exit(1);
-	}
+	ssize_t ret = 0;
 	char *msg = strrchr(file_path, '/') + 1;
-	strcat(msg, ":");
+	strcat(msg, "/");
 	strcat(msg, to_string(st.st_size).data());
-	write(fd, msg, strlen(msg));
-	ret = recv(fd, &flag, sizeof(flag), 0);
+	char complete_msg[] = "f/";
+	strcat(complete_msg, msg);
+	write(socket_fd, complete_msg, strlen(complete_msg));
+	char flag = '0';
+	ret = recv(socket_fd, &flag, sizeof(flag), 0);
 	assert(ret >= 0);
-	if (flag != '0') {
-		printf("Receive flag from server failed2.\n");
+	if (flag != '1') {
+		printf("Receive flag from server failed.\n");
+#ifdef DEBUG
+		cout << __LINE__ << endl;
+#endif // DEBUG
 		exit(1);
 	}
-	for (;;) {
-		ret = writev(fd, &di->iov, IOV_NUM);
-		if (ret < 0) {
-			perror("Write to socket failed");
-			exit(1);
-		}
-		di->iov.iov_len -= ret;
-		di->iov.iov_base = di->iov.iov_base + ret;
-		di->bytes_to_deal_with -= ret;
-		if (di->bytes_to_deal_with <= 0) {
+	off_t off = 0;
+	long send_size = st.st_size;
+	while (send_size > 0) {
+		ssize_t ret = sendfile(socket_fd, file_fd, &off, send_size);
+		if(ret < 0)
+		{
+			perror("Sendfile failed");
 			break;
 		}
+	#ifdef DEBUG
+		cout << "have send :" << ret << endl;
+	#endif // DEBUG
+		send_size -= ret;
 	}
-	close(fd);
-	if (ret < 0) {
-		perror("Receive end flag failed");
-	}
-	munmap(buf, st.st_size);
+	close(socket_fd);
 	close(file_fd);
-	delete di;
 }
 
 setup::setup()
@@ -192,7 +184,10 @@ setup::setup()
 	int flag = 1;
 	setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 	int ret = bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
-	assert(ret >= 0);
+	if (ret < 0) {
+		perror("Binding failed");
+		exit(-1);
+	}
 }
 
 setup::setup(char* ip_addr,int port)
@@ -203,16 +198,17 @@ setup::setup(char* ip_addr,int port)
 	{
 		target_addr = inet_addr(ip_addr);
 		if (target_addr == INADDR_NONE) {
-			throw invalid_argument("Invalid address");
+			throw invalid_argument("Invalid address:");
 		}
 	}
 	catch (const std::exception& ex)
 	{
-		cout << ex.what()<<endl;
+		cout << ex.what() << ip_addr << endl;
 		exit(1);
 	}
 	memcpy(&addr.sin_addr, &target_addr, sizeof(target_addr));
-	addr.sin_port = htons(port);
+	unsigned short pt = static_cast<unsigned short>(port);
+	addr.sin_port = htons(pt);
 	socket_fd = socket(AF_INET, SOCK_STREAM, 0);
 	int ret = connect(socket_fd, (struct sockaddr*)&addr, sizeof(addr));
 	if (ret < 0) {
@@ -224,34 +220,32 @@ setup::setup(char* ip_addr,int port)
 send_msg::send_msg(setup* s, char* msg) : msg(msg)
 {
 	pt = s;
-	fd = pt->socket_fd;
+	socket_fd = pt->socket_fd;
 }
 
 void send_msg::write_to()
 {
-	int ret = pre_action(fd, false, "message");
-	write(fd, msg, strlen(msg)+1);
-	close(fd);
+	strcpy(pre_msg, "m/");
+	strcat(pre_msg, msg);
+	write(socket_fd, pre_msg, strlen(pre_msg));
+	close(socket_fd);
 }
 
-int basic_action::pre_action(int fd, bool active, const char* msg)
+int basic_action::pre_action(int fd)
 {
-	char msg1 = '0';
-	int ret = 0;
-	if (active) {
-		ret = write(fd, &msg1, 8);
-		assert(ret >= 0);
-		return 1;
-	}
-	else
+	char msg1 = '1';
+	ssize_t ret = 0;
+	ret = read(fd, pre_msg, MSG_LEN);
+	assert(ret >= 0);
+#ifdef DEBUG
+	cout << "Read msg from client: " << pre_msg << endl;
+#endif // DEBUG
+	write(fd, &msg1, sizeof(msg1));
+	switch (pre_msg[0])
 	{
-		ret=write(fd, msg, sizeof(msg));
-		assert(ret >= 0);
-		ret = read(fd, &msg1, sizeof(msg1));
-		assert(ret >= 0);
-		if (msg1 != '0') {
-			return 1;
-		}
+	case 'm':return MESSAGE_TYPE;
+	case 'f':return FILE_TYPE;
+	default:return NONE_TYPE;
 	}
 	return 0;
 }
