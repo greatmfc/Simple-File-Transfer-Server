@@ -5,10 +5,10 @@ DEBUGFLAGS += -g -fsanitize=address
 object = sft.cpp main.cpp
 
 sft: $(object)
-	$(CXX) $(object) -o sft
+	$(CXX) $(object) -o sft -O3
 
 test: $(object)
-	$(CXX) $(object) -o test $(DEBUGFLAGS)
+	$(CXX) -DDEBUG $(object) -o test $(DEBUGFLAGS)
 
 clean:
-	rm -f sft
+	rm -f sft test
