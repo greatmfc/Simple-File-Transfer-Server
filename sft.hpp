@@ -1,4 +1,119 @@
-#include "sft.h"
+#pragma once
+
+#include <cstdio>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/time.h>
+#include <cstring>
+#include <unistd.h>
+#include <cstdlib>
+#include <cstdarg>
+#include <sys/param.h>
+#include <rpc/types.h>
+#include <getopt.h>
+#include <ctime>
+#include <csignal>
+#include <exception>
+#include <iostream>
+#include <cassert>
+#include <sys/stat.h>
+#include <sys/uio.h>
+#include <sys/mman.h>
+#include <sys/sendfile.h>
+
+#define DEFAULT_PORT 9007
+#define IOV_NUM 1
+#define VERSION 1.513
+#define BUFFER_SIZE 256
+using namespace std;
+
+typedef struct data_info
+{
+	unsigned fd;
+	ssize_t bytes_to_deal_with;
+	char* buf;
+	struct iovec iov;
+} data_info;
+
+enum MyEnum
+{
+	FILE_TYPE,
+	MESSAGE_TYPE,
+	NONE_TYPE
+};
+
+class setup
+{
+public:
+	setup();
+	setup(char* ip_addr,int port);
+	~setup() = default;
+	int socket_fd;
+	struct sockaddr_in addr;
+
+private:
+	unsigned long target_addr;
+	int write_to_sock;
+};
+
+class basic_action
+{
+protected:
+	basic_action() = default;
+	virtual ~basic_action() = default;
+	int pre_action(int fd);
+	unsigned socket_fd;
+	data_info* di;
+	int status_code;
+	char pre_msg[BUFFER_SIZE];
+	setup* pt;
+};
+
+class receive_loop : public basic_action
+{
+public:
+	receive_loop() = default;
+	receive_loop(setup* s);
+	~receive_loop() = default;
+	void loop();
+
+private:
+	int decide_action();
+	void deal_with_file();
+	void deal_with_mesg();
+	void reset_buffers();
+	int accepted_fd;
+	struct sockaddr_in addr;
+	socklen_t len;
+	char buffer[BUFFER_SIZE];
+};
+
+class send_file : public basic_action
+{
+public:
+	send_file() = default;
+	send_file(setup* s, char* path);
+	~send_file() = default;
+	void write_to();
+
+private:
+	char* file_path;
+};
+
+class send_msg : public basic_action
+{
+public:
+	send_msg() = default;
+	send_msg(setup* s, char* msg);
+	void write_to();
+	~send_msg() = default;
+private:
+	char* msg;
+};
 
 receive_loop::receive_loop(setup* s)
 {
@@ -18,15 +133,22 @@ void receive_loop::loop()
 			perror("Accept failed");
 			exit(1);
 		}
-		reset_buffers();
-		status_code = decide_action();
-		if (status_code == FILE_TYPE) {
-			deal_with_file();
+		pid_t pid = fork();
+		if (pid < 0) {
+			perror("Fork failed");
+			goto child_process;
 		}
-		else if (status_code == MESSAGE_TYPE) {
-			deal_with_mesg();
+		else if(pid == 0) {
+			child_process:reset_buffers();
+			status_code = decide_action();
+			if (status_code == FILE_TYPE) {
+				deal_with_file();
+			}
+			else if (status_code == MESSAGE_TYPE) {
+				deal_with_mesg();
+			}
+			exit(0);
 		}
-		reset_buffers();
 	}
 }
 
@@ -34,7 +156,7 @@ int receive_loop::decide_action()
 {
 	char msg1 = '1';
 	ssize_t ret = 0;
-	ret = read(accepted_fd, pre_msg, MSG_LEN);
+	ret = read(accepted_fd, pre_msg, BUFFER_SIZE);
 	if (ret <= 0) {
 		perror("Something happened while read from client");
 		close(accepted_fd);
@@ -235,7 +357,7 @@ int basic_action::pre_action(int fd)
 {
 	char msg1 = '1';
 	ssize_t ret = 0;
-	ret = read(fd, pre_msg, MSG_LEN);
+	ret = read(fd, pre_msg, BUFFER_SIZE);
 	assert(ret >= 0);
 #ifdef DEBUG
 	cout << "Read msg from client: " << pre_msg << endl;

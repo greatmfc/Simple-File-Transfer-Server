@@ -85,10 +85,10 @@
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="sft.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="sft.h" />
+    <ClInclude Include="log.hpp" />
+    <ClInclude Include="sft.hpp" />
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>

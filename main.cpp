@@ -1,4 +1,4 @@
-﻿#include "sft.h"
+﻿#include "sft.hpp"
 
 static void usage() {
 	fprintf(stderr, "sft [option] [argument] ip:port\n"
@@ -8,6 +8,8 @@ static void usage() {
 		"-m				Message mode for sending message.Argument is your content.\n"
 		"-h				This information.\n"
 		"-v				Display version.\n"
+		"-l				No terminal output but log file.\n"
+		"-n				Nothing left behind after finishing program.\n"
 		"Example:		./sft -f ./file 255.255.255.0:8888\n"
 		"				./sft -m hello,world! 255.255.255.0:8888\n");
 	exit(2);
@@ -18,7 +20,7 @@ static void version() {
 	exit(2);
 }
 
-static void check_file(char* path) {
+static void check_file(char*& path) {
 	if (strchr(path, '/') == NULL) {
 		fprintf(stderr, "Invalid path. Please check the path.\n");
 		exit(1);
@@ -41,7 +43,9 @@ static void sig_hanl(int sig) {
 	exit(0);
 }
 
-static void parse_arg(char* arg, char* port, char* ip) {
+static void parse_arg(char*& arg, char*& port, char*& ip) {
+	ip = new char[16];
+	port = new char[8];
 	char* tmp = strchr(arg, ':');
 	if (tmp == NULL) {
 		fprintf(stderr, "Fail to locate port number.\n");
@@ -107,8 +111,6 @@ int main(int argc, char* argv[])
 	}
 	else{
 		char* ip, * port;
-		ip = new char[16];
-		port = new char[8];
 		parse_arg(argv[optind], port, ip);
 		setup st(ip, atoi(port));
 		if (path != nullptr) {
