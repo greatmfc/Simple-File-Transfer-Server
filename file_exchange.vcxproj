@@ -78,27 +78,31 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <WSLPath>Debian</WSLPath>
-    <RemoteCopySourceMethod>sftp</RemoteCopySourceMethod>
+    <RemoteCopySourceMethod>rsync</RemoteCopySourceMethod>
     <AdditionalSourcesToCopyMapping>
     </AdditionalSourcesToCopyMapping>
     <EnableASAN>false</EnableASAN>
+    <IncludePath>C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\include\usr\include\c++\12;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemGroup>
+    <ClCompile Include="epoll_utility.cpp" />
+    <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="log.hpp" />
-    <ClInclude Include="sft.hpp" />
+    <ClInclude Include="common_headers.h" />
+    <ClCompile Include="sft.cpp">
+      <FileType>CppClass</FileType>
+    </ClCompile>
   </ItemGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <CppLanguageStandard>c++17</CppLanguageStandard>
       <AdditionalOptions>-DDEBUG %(AdditionalOptions)</AdditionalOptions>
+      <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
-    <Link>
-      <AdditionalOptions>-DDEBUG %(AdditionalOptions)</AdditionalOptions>
-    </Link>
+    <Link />
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>

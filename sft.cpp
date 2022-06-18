@@ -1,119 +1,4 @@
-#pragma once
-
-#include <cstdio>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/time.h>
-#include <cstring>
-#include <unistd.h>
-#include <cstdlib>
-#include <cstdarg>
-#include <sys/param.h>
-#include <rpc/types.h>
-#include <getopt.h>
-#include <ctime>
-#include <csignal>
-#include <exception>
-#include <iostream>
-#include <cassert>
-#include <sys/stat.h>
-#include <sys/uio.h>
-#include <sys/mman.h>
-#include <sys/sendfile.h>
-
-#define DEFAULT_PORT 9007
-#define IOV_NUM 1
-#define VERSION 1.513
-#define BUFFER_SIZE 256
-using namespace std;
-
-typedef struct data_info
-{
-	unsigned fd;
-	ssize_t bytes_to_deal_with;
-	char* buf;
-	struct iovec iov;
-} data_info;
-
-enum MyEnum
-{
-	FILE_TYPE,
-	MESSAGE_TYPE,
-	NONE_TYPE
-};
-
-class setup
-{
-public:
-	setup();
-	setup(char* ip_addr,int port);
-	~setup() = default;
-	int socket_fd;
-	struct sockaddr_in addr;
-
-private:
-	unsigned long target_addr;
-	int write_to_sock;
-};
-
-class basic_action
-{
-protected:
-	basic_action() = default;
-	virtual ~basic_action() = default;
-	int pre_action(int fd);
-	unsigned socket_fd;
-	data_info* di;
-	int status_code;
-	char pre_msg[BUFFER_SIZE];
-	setup* pt;
-};
-
-class receive_loop : public basic_action
-{
-public:
-	receive_loop() = default;
-	receive_loop(setup* s);
-	~receive_loop() = default;
-	void loop();
-
-private:
-	int decide_action();
-	void deal_with_file();
-	void deal_with_mesg();
-	void reset_buffers();
-	int accepted_fd;
-	struct sockaddr_in addr;
-	socklen_t len;
-	char buffer[BUFFER_SIZE];
-};
-
-class send_file : public basic_action
-{
-public:
-	send_file() = default;
-	send_file(setup* s, char* path);
-	~send_file() = default;
-	void write_to();
-
-private:
-	char* file_path;
-};
-
-class send_msg : public basic_action
-{
-public:
-	send_msg() = default;
-	send_msg(setup* s, char* msg);
-	void write_to();
-	~send_msg() = default;
-private:
-	char* msg;
-};
+#include "common_headers.h"
 
 receive_loop::receive_loop(setup* s)
 {
@@ -125,48 +10,73 @@ receive_loop::receive_loop(setup* s)
 
 void receive_loop::loop()
 {
-	int ret = listen(socket_fd, 5);
+	int ret=listen(socket_fd, 5);
 	assert(ret >= 0);
+	epoll_instance.add_fd_or_event_to_epoll(socket_fd,false,true,0);
+	epoll_instance.set_fd_no_block(socket_fd);
 	while (1) {
-		accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
-		if (accepted_fd < 0) {
-			perror("Accept failed");
+		int count=epoll_instance.wait_for_epoll();
+		if (count < 0 && errno != EINTR) {
+			perror("Error epoll_wait");
 			exit(1);
 		}
-		pid_t pid = fork();
-		if (pid < 0) {
-			perror("Fork failed");
-			goto child_process;
-		}
-		else if(pid == 0) {
-			child_process:reset_buffers();
-			status_code = decide_action();
-			if (status_code == FILE_TYPE) {
-				deal_with_file();
+		for (int i = 0; i < count; ++i) {
+			int react_fd = epoll_instance.events[i].data.fd;
+
+			if (react_fd == socket_fd) {
+				while (true)
+				{
+					int accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
+					if (accepted_fd < 0 && errno != EAGAIN) {
+						perror("Accept failed");
+						exit(1);
+					}
+					else if(accepted_fd<0) {
+						break;
+					}
+				#ifdef DEBUG
+					printf("Accept from client:%s\n", inet_ntoa(addr.sin_addr));
+				#endif // DEBUG
+					LOG_ACCEPT(addr);
+					dis[accepted_fd].address = addr;
+					dis[accepted_fd].fd = accepted_fd;
+					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
+				}
 			}
-			else if (status_code == MESSAGE_TYPE) {
-				deal_with_mesg();
+			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+				#ifdef DEBUG
+					printf("Disconnect from client:%s\n", inet_ntoa(dis[react_fd].address.sin_addr));
+				#endif // DEBUG
+					LOG_CLOSE(dis[react_fd].address);
+				epoll_instance.remove_fd_from_epoll(react_fd);
 			}
-			exit(0);
+			else if (epoll_instance.events[i].events & EPOLLIN) {
+				status_code = decide_action(react_fd);
+				if (status_code == FILE_TYPE) {
+					deal_with_file(react_fd);
+				}
+				else if (status_code == MESSAGE_TYPE) {
+					deal_with_mesg(react_fd);
+				}
+			}
 		}
 	}
 }
 
-int receive_loop::decide_action()
+int receive_loop::decide_action(int fd)
 {
 	char msg1 = '1';
 	ssize_t ret = 0;
-	ret = read(accepted_fd, pre_msg, BUFFER_SIZE);
-	if (ret <= 0) {
+	ret = read(fd, dis[fd].buffer_for_pre_messsage, BUFFER_SIZE);
+	if (ret < 0 && errno!=EAGAIN) {
 		perror("Something happened while read from client");
-		close(accepted_fd);
 		goto end;
 	}
 #ifdef DEBUG
-	cout << "Read msg from client: " << pre_msg << endl;
+	cout << "Read msg from client: " << dis[fd].buffer_for_pre_messsage << endl;
 #endif // DEBUG
-	write(accepted_fd, &msg1, sizeof(msg1));
-	switch (pre_msg[0])
+	write(fd, &msg1, sizeof(msg1));
+	switch (dis[fd].buffer_for_pre_messsage[0])
 	{
 	case 'm':return MESSAGE_TYPE;
 	case 'f':return FILE_TYPE;
@@ -175,23 +85,21 @@ int receive_loop::decide_action()
 	end:return -1;
 }
 
-void receive_loop::deal_with_file()
+void receive_loop::deal_with_file(int fd)
 {
 	char full_path[64]="./";
-	char* msg = pre_msg;
+	char* msg = dis[fd].buffer_for_pre_messsage;
 	msg += 2;
 	ssize_t size = atoi(strchr(msg, '/')+1);
 	strncat(full_path, msg, strcspn(msg, "/"));
 	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	di = new data_info();
-	di->bytes_to_deal_with = size;
-	di->fd = accepted_fd;
-	di->buf = new char[size];
-	char* buf = di->buf;
+	dis[fd].bytes_to_deal_with = size;
+	dis[fd].buf = new char[size];
+	char* buf = dis[fd].buf;
 	ssize_t ret = 0;
 	while (size)
 	{
-		ret=read(accepted_fd, buf, size);
+		ret=read(fd, buf, size);
 		if (ret < 0)
 		{
 			perror("Receieve failed");
@@ -200,32 +108,36 @@ void receive_loop::deal_with_file()
 		size -= ret;
 		buf += ret;
 	}
-	di->fd = write_fd;
-	buf = di->buf;
+	//di->fd = write_fd;
+	buf = dis[fd].buf;
 	for (;;) {
-		ret = write(write_fd, di->buf, di->bytes_to_deal_with);
+		ret = write(write_fd, dis[fd].buf, dis[fd].bytes_to_deal_with);
 		if (ret < 0) {
 			perror("Server write to local failed");
 			exit(1);
 		}
-		di->bytes_to_deal_with -= ret;
-		di->buf += ret;
-		if (di->bytes_to_deal_with <= 0) {
+		dis[fd].bytes_to_deal_with -= ret;
+		dis[fd].buf += ret;
+		if (dis[fd].bytes_to_deal_with <= 0) {
 			break;
 		}
 	}
+#ifdef DEBUG
 	cout << "Success on receiving file: " << msg << endl;
+#endif // DEBUG
+	LOG_FILE(addr, msg);
 	delete buf;
-	delete di;
 	close(write_fd);
-	close(accepted_fd);
+	//close(accepted_fd);
 }
 
-void receive_loop::deal_with_mesg()
+void receive_loop::deal_with_mesg(int fd)
 {
-	char* pt = pre_msg;
+	char* pt = dis[fd].buffer_for_pre_messsage;
+	char buffer[256]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
+	/*
 	time_t rawtime;
 	struct tm* time_info;
 	char log_name[64];
@@ -235,14 +147,17 @@ void receive_loop::deal_with_mesg()
 	int log_fd = open(log_name, O_CREAT | O_APPEND | O_RDWR, 0644);
 	write(log_fd, buffer, strlen(buffer));
 	close(log_fd);
-	close(accepted_fd);
+	*/
+	LOG_MSG(addr, buffer);
+#ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
+#endif // DEBUG
 }
 
 void receive_loop::reset_buffers()
 {
-	memset(pre_msg, 0, sizeof pre_msg);
-	memset(buffer, 0, sizeof buffer);
+	//memset(pre_msg, 0, sizeof pre_msg);
+	//memset(buffer, 0, sizeof buffer);
 }
 
 send_file::send_file(setup* s, char* path)
@@ -347,27 +262,10 @@ send_msg::send_msg(setup* s, char* msg) : msg(msg)
 
 void send_msg::write_to()
 {
+	char pre_msg[256]{ 0 };
 	strcpy(pre_msg, "m/");
 	strcat(pre_msg, msg);
 	write(socket_fd, pre_msg, strlen(pre_msg));
 	close(socket_fd);
 }
 
-int basic_action::pre_action(int fd)
-{
-	char msg1 = '1';
-	ssize_t ret = 0;
-	ret = read(fd, pre_msg, BUFFER_SIZE);
-	assert(ret >= 0);
-#ifdef DEBUG
-	cout << "Read msg from client: " << pre_msg << endl;
-#endif // DEBUG
-	write(fd, &msg1, sizeof(msg1));
-	switch (pre_msg[0])
-	{
-	case 'm':return MESSAGE_TYPE;
-	case 'f':return FILE_TYPE;
-	default:return NONE_TYPE;
-	}
-	return 0;
-}

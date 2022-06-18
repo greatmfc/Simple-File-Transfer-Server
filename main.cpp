@@ -1,4 +1,4 @@
-﻿#include "sft.hpp"
+﻿#include "common_headers.h"
 
 static void usage() {
 	fprintf(stderr, "sft [option] [argument] ip:port\n"
@@ -8,8 +8,7 @@ static void usage() {
 		"-m				Message mode for sending message.Argument is your content.\n"
 		"-h				This information.\n"
 		"-v				Display version.\n"
-		"-l				No terminal output but log file.\n"
-		"-n				Nothing left behind after finishing program.\n"
+		"-n				No log file left behind after finishing program.\n"
 		"Example:		./sft -f ./file 255.255.255.0:8888\n"
 		"				./sft -m hello,world! 255.255.255.0:8888\n");
 	exit(2);
@@ -38,11 +37,6 @@ static void check_file(char*& path) {
 	}
 }
 
-static void sig_hanl(int sig) {
-	cout << "\rShutting down..." << endl;
-	exit(0);
-}
-
 static void parse_arg(char*& arg, char*& port, char*& ip) {
 	ip = new char[16];
 	port = new char[8];
@@ -59,6 +53,11 @@ static void parse_arg(char*& arg, char*& port, char*& ip) {
 		exit(1);
 	}
 	strncpy(ip, arg, sz);
+}
+
+static void sigint_hanl(int sig) {
+	cout << "\rShutting down..." << endl;
+	exit(0);
 }
 
 int main(int argc, char* argv[])
@@ -103,8 +102,9 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "Missing ip address!\n");
 		exit(3);
 	}
+	//log::get_instance()->init_logfile();
 	if (argc == 1) {
-		signal(SIGINT, sig_hanl);
+		signal(SIGINT, sigint_hanl);
 		setup st;
 		receive_loop rl(&st);
 		rl.loop();
