@@ -24,8 +24,10 @@
 #include <exception>
 #include <iostream>
 #include <mutex>
+#include <condition_variable>
 #include <queue>
-#include <string_view>
+#include <string>
+#include <thread>
 #include <liburing.h>
 #include <sys/epoll.h>
 
@@ -46,10 +48,14 @@ using std::to_string;
 using std::mutex;
 using std::unique_lock;
 using std::queue;
-using std::string_view;
 using std::move;
 using std::forward;
 using std::exit;
+using std::condition_variable;
+using std::mutex;
+using std::unique_lock;
+using std::thread;
+using std::string;
 
 enum MyEnum
 {
@@ -104,33 +110,34 @@ private:
 class log
 {
 public:
-	log();
 	~log();
-	void submit_missions(string_view&& sv);
+	void submit_missions(string&& sv);
 	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr);
 	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, const char* msg);
-	void init_logfile();
+	void init_log();
 	static inline log* get_instance() {
 		static log log_object;
 		return &log_object;
 	}
-	inline void flush_all_missions() {
-		write_log();
+	static void *flush_all_missions() {
+		log::get_instance()->write_log();
 	};
 	constexpr void no_logfile() {
 		keep_log = false;
 	};
 
 private:
+	log();
 	time_t rawtime;
 	struct tm* time_info;
-	unique_lock<mutex> locker;
 	FILE* logfile_fd;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
-	queue<string_view> container;
+	queue<string> container;
+	mutex mt;
+	condition_variable condition_var;
 
-	void write_log();
+	void* write_log();
 };
 
 class epoll_utility

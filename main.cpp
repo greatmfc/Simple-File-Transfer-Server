@@ -66,7 +66,7 @@ int main(int argc, char* argv[])
 	int check_mode = 0;
 	char* mesg = nullptr;
 	char* path = nullptr;
-	char mode[8] = "cm:f:hv";
+	char mode[] = "cm:f:hvn";
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{
@@ -95,6 +95,11 @@ int main(int argc, char* argv[])
 			version();
 			break; 
 		}
+		case 'n':
+		{
+			log::get_instance()->no_logfile();
+			break;
+		}
 			default: break;
 		}
 	}
@@ -102,7 +107,7 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "Missing ip address!\n");
 		exit(3);
 	}
-	//log::get_instance()->init_logfile();
+	log::get_instance()->init_log();
 	if (argc == 1) {
 		signal(SIGINT, sigint_hanl);
 		setup st;

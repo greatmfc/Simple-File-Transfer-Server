@@ -99,10 +99,13 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <CppLanguageStandard>c++17</CppLanguageStandard>
-      <AdditionalOptions>-DDEBUG %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions> -pthread -DDEBUG %(AdditionalOptions)</AdditionalOptions>
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <Link />
+    <Link>
+      <AdditionalOptions> -pthread %(AdditionalOptions)</AdditionalOptions>
+    </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
