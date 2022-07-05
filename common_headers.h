@@ -63,6 +63,7 @@ enum MyEnum
 	MESSAGE_TYPE,
 	NONE_TYPE,
 	ERROR_TYPE,
+	GPS_TYPE,
 	ACCEPT,
 	CLOSE,
 	READ_PRE,
@@ -79,7 +80,7 @@ typedef struct conn_info //存放文件描述符和文件类型
 
 typedef struct data_info
 {
-	unsigned fd;
+	int fd;
 	ssize_t bytes_to_deal_with;
 	char* buf;
 	char buffer_for_pre_messsage[BUFFER_SIZE];
@@ -196,6 +197,7 @@ private:
 	int decide_action(int fd);
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
+	void deal_with_gps(int fd);
 	void reset_buffers();
 };
 

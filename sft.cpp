@@ -39,7 +39,7 @@ void receive_loop::loop()
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
 					dis[accepted_fd].address = addr;
-					dis[accepted_fd].fd = accepted_fd;
+					dis[accepted_fd].fd = -1;
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
 				}
 			}
@@ -49,6 +49,9 @@ void receive_loop::loop()
 				#endif // DEBUG
 					LOG_CLOSE(dis[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
+				if (dis[react_fd].fd > 0) {
+					close(dis[react_fd].fd);
+				}
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				status_code = decide_action(react_fd);
@@ -57,6 +60,9 @@ void receive_loop::loop()
 				}
 				else if (status_code == MESSAGE_TYPE) {
 					deal_with_mesg(react_fd);
+				}
+				else if (status_code == GPS_TYPE){
+					deal_with_gps(react_fd);
 				}
 			}
 		}
@@ -80,6 +86,7 @@ int receive_loop::decide_action(int fd)
 	{
 	case 'm':return MESSAGE_TYPE;
 	case 'f':return FILE_TYPE;
+	case 'g':return GPS_TYPE;
 	default:return NONE_TYPE;
 	}
 	end:return -1;
@@ -125,7 +132,7 @@ void receive_loop::deal_with_file(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
-	LOG_FILE(addr, msg);
+	LOG_FILE(dis[fd].address, msg);
 	delete buf;
 	close(write_fd);
 	//close(accepted_fd);
@@ -148,9 +155,31 @@ void receive_loop::deal_with_mesg(int fd)
 	write(log_fd, buffer, strlen(buffer));
 	close(log_fd);
 	*/
-	LOG_MSG(addr, buffer);
+	LOG_MSG(dis[fd].address, buffer);
 #ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
+#endif // DEBUG
+}
+
+void receive_loop::deal_with_gps(int fd)
+{
+	char file_name[32] = "gps_";
+	strcat(file_name, inet_ntoa(dis[fd].address.sin_addr));
+	if (dis[fd].fd == -1) {
+		dis[fd].fd = open(file_name, O_WRONLY | O_CREAT | O_APPEND, 0644);
+	}
+	if (dis[fd].fd < 0) {
+		perror("Open file failed");
+		exit(1);
+	}
+	char* pt = dis[fd].buffer_for_pre_messsage;
+	char buffer[256]{ 0 };
+	strcpy(buffer, pt+2);
+	strcat(buffer, "\n");
+	write(dis[fd].fd, buffer, strlen(buffer));
+	LOG_MSG(dis[fd].address, "GPS content");
+#ifdef DEBUG
+	cout << "Success on receiving GPS: " << buffer;
 #endif // DEBUG
 }
 
