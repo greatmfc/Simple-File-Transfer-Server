@@ -114,13 +114,13 @@ public:
 	~log();
 	void submit_missions(string&& sv);
 	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr);
-	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, const char* msg);
+	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, char*&& msg);
 	void init_log();
 	static inline log* get_instance() {
 		static log log_object;
 		return &log_object;
 	}
-	static void *flush_all_missions() {
+	static void flush_all_missions() {
 		log::get_instance()->write_log();
 	};
 	constexpr void no_logfile() {
@@ -184,7 +184,7 @@ class receive_loop : public basic_action
 {
 public:
 	receive_loop() = default;
-	receive_loop(setup* s);
+	receive_loop(setup& s);
 	~receive_loop() = default;
 	void loop();
 
@@ -205,7 +205,7 @@ class send_file : public basic_action
 {
 public:
 	send_file() = default;
-	send_file(setup* s, char* path);
+	send_file(setup& s, char*& path);
 	~send_file() = default;
 	void write_to();
 
@@ -217,7 +217,7 @@ class send_msg : public basic_action
 {
 public:
 	send_msg() = default;
-	send_msg(setup* s, char* msg);
+	send_msg(setup& s, char*& msg);
 	void write_to();
 	~send_msg() = default;
 private:

@@ -111,7 +111,7 @@ int main(int argc, char* argv[])
 	if (argc == 1) {
 		signal(SIGINT, sigint_hanl);
 		setup st;
-		receive_loop rl(&st);
+		receive_loop rl(st);
 		rl.loop();
 	}
 	else{
@@ -120,11 +120,11 @@ int main(int argc, char* argv[])
 		setup st(ip, atoi(port));
 		if (path != nullptr) {
 			check_file(path);
-			send_file sf(&st, path);
+			send_file sf(st, path);
 			sf.write_to();
 		}
 		else if (mesg != nullptr) {
-			send_msg sm(&st, mesg);
+			send_msg sm(st, mesg);
 			sm.write_to();
 		}
 		delete ip;

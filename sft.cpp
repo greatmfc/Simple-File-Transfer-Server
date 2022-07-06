@@ -1,8 +1,8 @@
 #include "common_headers.h"
 
-receive_loop::receive_loop(setup* s)
+receive_loop::receive_loop(setup& s)
 {
-	pt = s;
+	pt = &s;
 	addr = pt->addr;
 	len = sizeof(addr);
 	socket_fd = pt->socket_fd;
@@ -64,6 +64,7 @@ void receive_loop::loop()
 				else if (status_code == GPS_TYPE){
 					deal_with_gps(react_fd);
 				}
+				memset(dis[react_fd].buffer_for_pre_messsage, 0, 256);
 			}
 		}
 	}
@@ -132,10 +133,9 @@ void receive_loop::deal_with_file(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
-	LOG_FILE(dis[fd].address, msg);
+	LOG_FILE(dis[fd].address, move(msg));
 	delete buf;
 	close(write_fd);
-	//close(accepted_fd);
 }
 
 void receive_loop::deal_with_mesg(int fd)
@@ -144,18 +144,7 @@ void receive_loop::deal_with_mesg(int fd)
 	char buffer[256]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
-	/*
-	time_t rawtime;
-	struct tm* time_info;
-	char log_name[64];
-	time(&rawtime);
-	time_info = localtime(&rawtime);
-	strftime(log_name, 64, "./%Y-%m-%d", time_info);
-	int log_fd = open(log_name, O_CREAT | O_APPEND | O_RDWR, 0644);
-	write(log_fd, buffer, strlen(buffer));
-	close(log_fd);
-	*/
-	LOG_MSG(dis[fd].address, buffer);
+	LOG_MSG(dis[fd].address, move(buffer));
 #ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
 #endif // DEBUG
@@ -189,9 +178,9 @@ void receive_loop::reset_buffers()
 	//memset(buffer, 0, sizeof buffer);
 }
 
-send_file::send_file(setup* s, char* path)
+send_file::send_file(setup& s, char*& path)
 {
-	pt = s;
+	pt = &s;
 	file_path = path;
 	socket_fd = pt->socket_fd;
 }
@@ -283,9 +272,9 @@ setup::setup(char* ip_addr,int port)
 	}
 }
 
-send_msg::send_msg(setup* s, char* msg) : msg(msg)
+send_msg::send_msg(setup& s, char*& msg) : msg(msg)
 {
-	pt = s;
+	pt = &s;
 	socket_fd = pt->socket_fd;
 }
 

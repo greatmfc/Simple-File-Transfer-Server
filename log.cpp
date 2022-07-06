@@ -14,13 +14,11 @@ log::~log()
 
 void log::submit_missions(string&& sv)
 {
-	mt.lock();
 	container.emplace(forward<string>(sv));
-	mt.unlock();
 	condition_var.notify_one();
 }
 
-void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, const char* msg)
+void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
 {
 	char content[128] = { 0 };
 	time(&rawtime);
