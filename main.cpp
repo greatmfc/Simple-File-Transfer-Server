@@ -107,6 +107,7 @@ int main(int argc, char* argv[])
 		fprintf(stderr, "Missing ip address!\n");
 		exit(3);
 	}
+	std::ios::sync_with_stdio(false);
 	log::get_instance()->init_log();
 	if (argc == 1) {
 		signal(SIGINT, sigint_hanl);

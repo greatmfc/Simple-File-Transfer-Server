@@ -35,7 +35,7 @@ void receive_loop::loop()
 						break;
 					}
 				#ifdef DEBUG
-					printf("Accept from client:%s\n", inet_ntoa(addr.sin_addr));
+					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
 					dis[accepted_fd].address = addr;
@@ -45,7 +45,8 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 				#ifdef DEBUG
-					printf("Disconnect from client:%s\n", inet_ntoa(dis[react_fd].address.sin_addr));
+					//printf("Disconnect from client:%s\n", inet_ntoa(dis[react_fd].address.sin_addr));
+					cout<<"Disconnect from client:"<<inet_ntoa(dis[react_fd].address.sin_addr)<<endl;
 				#endif // DEBUG
 					LOG_CLOSE(dis[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
@@ -205,7 +206,7 @@ void send_file::write_to()
 	ret = recv(socket_fd, &flag, sizeof(flag), 0);
 	assert(ret >= 0);
 	if (flag != '1') {
-		printf("Receive flag from server failed.\n");
+		cout << "Receive flag from server failed.\n";
 #ifdef DEBUG
 		cout << __LINE__ << endl;
 #endif // DEBUG
