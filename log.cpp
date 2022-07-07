@@ -6,6 +6,7 @@ log::log()
 
 log::~log()
 {
+	condition_var.notify_all();
 	fclose(logfile_fd);
 	if (!keep_log) {
 		remove(log_name);
@@ -63,6 +64,9 @@ void* log::write_log()
 	while (1)
 	{
 		condition_var.wait(locker);
+		if (container.size() == 0) {
+			return nullptr;
+		}
 		fputs(container.front().data(), logfile_fd);
 		container.pop();
 	}

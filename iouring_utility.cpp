@@ -1,4 +1,25 @@
 #include "common_headers.h"
+#include <liburing.h>
+
+class iouring_utility
+{
+public:
+	iouring_utility();
+	~iouring_utility();
+
+private:
+	void initialize_io_instance();	
+	void add_accept(unsigned flags); 
+	void add_socket_recv(int fd);
+	void add_socket_writev(int fd);
+	conn_info cis[CONN_INFO_NUMBER];
+	unsigned socket_fd;
+	struct sockaddr_in addr;
+	socklen_t len;
+	data_info dis[DATA_INFO_NUMBER];
+	io_uring io_instance;
+	io_uring_params input_params;
+};
 
 inline void iouring_utility::initialize_io_instance()
 {

@@ -145,6 +145,8 @@ void receive_loop::deal_with_mesg(int fd)
 	char buffer[256]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
+	char code = '1';
+	write(fd, &code, sizeof code);
 	LOG_MSG(dis[fd].address, move(buffer));
 #ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
@@ -285,6 +287,11 @@ void send_msg::write_to()
 	strcpy(pre_msg, "m/");
 	strcat(pre_msg, msg);
 	write(socket_fd, pre_msg, strlen(pre_msg));
+	char code = '0';
+	read(socket_fd, &code, sizeof code);
+	if (code != '1') {
+		perror("Something wrong with the server");
+	}
 	close(socket_fd);
 }
 

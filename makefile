@@ -1,14 +1,16 @@
 CXX ?= g++
 
-DEBUGFLAGS += -g -fsanitize=address
+DEBUGFLAGS += -g -DDEBUG
 
-object = sft.cpp main.cpp
+object = epoll_utility.cpp log.cpp sft.cpp main.cpp
+
+LIB = -pthread
 
 sft: $(object)
-	$(CXX) $(object) -o sft -O3
+	$(CXX) $(object) $(LIB) -o sft -O3
 
 test: $(object)
-	$(CXX) -DDEBUG $(object) -o test $(DEBUGFLAGS)
+	$(CXX) $(object) $(LIB) -o test $(DEBUGFLAGS)
 
 clean:
 	rm -f sft test

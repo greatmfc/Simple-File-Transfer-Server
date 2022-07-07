@@ -40,6 +40,8 @@ static void check_file(char*& path) {
 static void parse_arg(char*& arg, char*& port, char*& ip) {
 	ip = new char[16];
 	port = new char[8];
+	memset(ip, 0, 16);
+	memset(port, 0, 8);
 	char* tmp = strchr(arg, ':');
 	if (tmp == NULL) {
 		fprintf(stderr, "Fail to locate port number.\n");
@@ -57,6 +59,7 @@ static void parse_arg(char*& arg, char*& port, char*& ip) {
 
 static void sigint_hanl(int sig) {
 	cout << "\rShutting down..." << endl;
+	log::get_instance()->~log();
 	exit(0);
 }
 
@@ -132,5 +135,6 @@ int main(int argc, char* argv[])
 		delete port;
 	}
 	cout << "Success on sending. Please check the server." << endl;
+	log::get_instance()->~log();
 	return 0;
 }

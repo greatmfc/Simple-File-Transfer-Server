@@ -28,12 +28,11 @@
 #include <queue>
 #include <string>
 #include <thread>
-#include <liburing.h>
 #include <sys/epoll.h>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.513
+#define VERSION 1.707
 #define BUFFER_SIZE 256
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -87,26 +86,6 @@ typedef struct data_info
 	struct iovec iov;
 	sockaddr_in address;
 } data_info;
-
-class iouring_utility
-{
-public:
-	iouring_utility();
-	~iouring_utility();
-
-private:
-	void initialize_io_instance();	
-	void add_accept(unsigned flags); 
-	void add_socket_recv(int fd);
-	void add_socket_writev(int fd);
-	conn_info cis[CONN_INFO_NUMBER];
-	unsigned socket_fd;
-	struct sockaddr_in addr;
-	socklen_t len;
-	data_info dis[DATA_INFO_NUMBER];
-	io_uring io_instance;
-	io_uring_params input_params;
-};
 
 class log
 {
