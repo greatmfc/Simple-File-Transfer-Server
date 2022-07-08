@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <sys/epoll.h>
+#include <fstream>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -55,6 +56,8 @@ using std::mutex;
 using std::unique_lock;
 using std::thread;
 using std::string;
+using std::ios;
+using std::ofstream;
 
 enum MyEnum
 {
@@ -110,7 +113,8 @@ private:
 	log();
 	time_t rawtime;
 	struct tm* time_info;
-	FILE* logfile_fd;
+	ofstream log_file;
+	//FILE* logfile_fd;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
 	queue<string> container;

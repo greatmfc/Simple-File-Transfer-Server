@@ -6,8 +6,9 @@ log::log()
 
 log::~log()
 {
+	//fclose(logfile_fd);
 	condition_var.notify_all();
-	fclose(logfile_fd);
+	log_file.close();
 	if (!keep_log) {
 		remove(log_name);
 	}
@@ -48,12 +49,13 @@ void log::init_log()
 	time(&rawtime);
 	time_info = localtime(&rawtime);
 	strftime(log_name, 64, "./log_%Y-%m-%d", time_info);
-	logfile_fd = fopen(log_name,"a");
-	if (logfile_fd < 0) {
-		perror("Open log file failed");
+	log_file.open(log_name, ios::app | ios::out);
+	//logfile_fd = fopen(log_name,"a");
+	if (!log_file.is_open()) {
+		cout<<"Open log file failed\n";
 		exit(1);
 	}
-	setvbuf(logfile_fd, NULL, _IONBF, 0);
+	//setvbuf(logfile_fd, NULL, _IONBF, 0);
 	thread log_thread(flush_all_missions);
 	log_thread.detach();
 }
@@ -67,7 +69,9 @@ void* log::write_log()
 		if (container.size() == 0) {
 			return nullptr;
 		}
-		fputs(container.front().data(), logfile_fd);
+		log_file << container.front().data();
+		log_file.flush();
+		//fputs(container.front().data(), logfile_fd);
 		container.pop();
 	}
 }

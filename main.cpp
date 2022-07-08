@@ -59,7 +59,6 @@ static void parse_arg(char*& arg, char*& port, char*& ip) {
 
 static void sigint_hanl(int sig) {
 	cout << "\rShutting down..." << endl;
-	log::get_instance()->~log();
 	exit(0);
 }
 
@@ -67,6 +66,7 @@ int main(int argc, char* argv[])
 {
 	int opt = 0;
 	int check_mode = 0;
+	bool no_log_file = false;
 	char* mesg = nullptr;
 	char* path = nullptr;
 	char mode[] = "cm:f:hvn";
@@ -101,18 +101,21 @@ int main(int argc, char* argv[])
 		case 'n':
 		{
 			log::get_instance()->no_logfile();
+			no_log_file = true;
 			break;
 		}
 			default: break;
 		}
 	}
 	if (argc != 1 && optind == argc) {
-		fprintf(stderr, "Missing ip address!\n");
-		exit(3);
+		if (!no_log_file) {
+			fprintf(stderr, "Missing ip address!\n");
+			exit(3);
+		}
 	}
 	std::ios::sync_with_stdio(false);
 	log::get_instance()->init_log();
-	if (argc == 1) {
+	if (argc == 1 || no_log_file) {
 		signal(SIGINT, sigint_hanl);
 		setup st;
 		receive_loop rl(st);
@@ -135,6 +138,5 @@ int main(int argc, char* argv[])
 		delete port;
 	}
 	cout << "Success on sending. Please check the server." << endl;
-	log::get_instance()->~log();
 	return 0;
 }
