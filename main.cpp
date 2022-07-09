@@ -113,9 +113,9 @@ int main(int argc, char* argv[])
 			exit(3);
 		}
 	}
-	std::ios::sync_with_stdio(false);
-	log::get_instance()->init_log();
-	if (argc == 1 || no_log_file) {
+	if (argc <= 2) {
+		std::ios::sync_with_stdio(false);
+		log::get_instance()->init_log();
 		signal(SIGINT, sigint_hanl);
 		setup st;
 		receive_loop rl(st);

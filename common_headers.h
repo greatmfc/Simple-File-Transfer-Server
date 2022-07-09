@@ -38,7 +38,7 @@
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
 #define CONN_INFO_NUMBER 1024
-#define DATA_INFO_NUMBER 10240
+#define DATA_INFO_NUMBER 4096
 #define EPOLL_EVENT_NUMBER 1024
 
 using std::cout;
@@ -82,8 +82,9 @@ typedef struct conn_info //存放文件描述符和文件类型
 
 typedef struct data_info
 {
-	int fd;
+	int reserved_var;
 	ssize_t bytes_to_deal_with;
+	ofstream file_stream;
 	char* buf;
 	char buffer_for_pre_messsage[BUFFER_SIZE];
 	struct iovec iov;
@@ -211,5 +212,6 @@ private:
 #define LOG_FILE(_addr,_msg) log::get_instance()->submit_missions(FILE_TYPE,_addr,_msg)
 #define LOG_ACCEPT(_addr) log::get_instance()->submit_missions(ACCEPT,_addr,"")
 #define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
+#define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
 #define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
 

@@ -83,6 +83,7 @@
     </AdditionalSourcesToCopyMapping>
     <EnableASAN>false</EnableASAN>
     <IncludePath>C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\include\usr\include\c++\12;$(IncludePath)</IncludePath>
+    <MultiProcNumber>1</MultiProcNumber>
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="epoll_utility.cpp" />

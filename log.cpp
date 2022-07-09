@@ -8,6 +8,7 @@ log::~log()
 {
 	//fclose(logfile_fd);
 	condition_var.notify_all();
+	log_file.flush();
 	log_file.close();
 	if (!keep_log) {
 		remove(log_name);
@@ -32,6 +33,7 @@ void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
 	case MESSAGE_TYPE: strcat(content, "[Message]:"); break;
 	case ACCEPT: strcat(content, "[Accept]:"); break;
 	case CLOSE: strcat(content, "[Closed]:"); break;
+	case ERROR_TYPE: strcat(content, "[Error]:"); break;
 	default: break;
 	}
 	strcat(content, inet_ntoa(_addr.sin_addr));
@@ -70,7 +72,6 @@ void* log::write_log()
 			return nullptr;
 		}
 		log_file << container.front().data();
-		log_file.flush();
 		//fputs(container.front().data(), logfile_fd);
 		container.pop();
 	}

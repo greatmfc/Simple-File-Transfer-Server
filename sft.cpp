@@ -3,7 +3,6 @@
 receive_loop::receive_loop(setup& s)
 {
 	pt = &s;
-	addr = pt->addr;
 	len = sizeof(addr);
 	socket_fd = pt->socket_fd;
 }
@@ -17,6 +16,7 @@ void receive_loop::loop()
 	while (1) {
 		int count=epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
+			LOG_ERROR(pt->addr);
 			perror("Error epoll_wait");
 			exit(1);
 		}
@@ -27,31 +27,32 @@ void receive_loop::loop()
 				while (true)
 				{
 					int accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
-					if (accepted_fd < 0 && errno != EAGAIN) {
-						perror("Accept failed");
-						exit(1);
-					}
-					else if(accepted_fd<0) {
-						break;
+					if (accepted_fd < 0) {
+						if (errno != EAGAIN) {
+							LOG_ERROR(addr);
+							perror("Accept failed");
+							exit(1);
+						}
+						else {
+							break;
+						}
 					}
 				#ifdef DEBUG
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
 					dis[accepted_fd].address = addr;
-					dis[accepted_fd].fd = -1;
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
 				}
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 				#ifdef DEBUG
-					//printf("Disconnect from client:%s\n", inet_ntoa(dis[react_fd].address.sin_addr));
 					cout<<"Disconnect from client:"<<inet_ntoa(dis[react_fd].address.sin_addr)<<endl;
 				#endif // DEBUG
 					LOG_CLOSE(dis[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
-				if (dis[react_fd].fd > 0) {
-					close(dis[react_fd].fd);
+				if (dis[react_fd].file_stream.is_open()) {
+					dis[react_fd].file_stream.close();
 				}
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
@@ -77,6 +78,7 @@ int receive_loop::decide_action(int fd)
 	ssize_t ret = 0;
 	ret = read(fd, dis[fd].buffer_for_pre_messsage, BUFFER_SIZE);
 	if (ret < 0 && errno!=EAGAIN) {
+		LOG_ERROR(dis[fd].address);
 		perror("Something happened while read from client");
 		goto end;
 	}
@@ -111,6 +113,7 @@ void receive_loop::deal_with_file(int fd)
 		ret=read(fd, buf, size);
 		if (ret < 0)
 		{
+			LOG_ERROR(dis[fd].address);
 			perror("Receieve failed");
 			exit(1);
 		}
@@ -122,6 +125,7 @@ void receive_loop::deal_with_file(int fd)
 	for (;;) {
 		ret = write(write_fd, dis[fd].buf, dis[fd].bytes_to_deal_with);
 		if (ret < 0) {
+			LOG_ERROR(dis[fd].address);
 			perror("Server write to local failed");
 			exit(1);
 		}
@@ -157,18 +161,20 @@ void receive_loop::deal_with_gps(int fd)
 {
 	char file_name[32] = "gps_";
 	strcat(file_name, inet_ntoa(dis[fd].address.sin_addr));
-	if (dis[fd].fd == -1) {
-		dis[fd].fd = open(file_name, O_WRONLY | O_CREAT | O_APPEND, 0644);
+	if (!dis[fd].file_stream.is_open()) {
+		dis[fd].file_stream.open(file_name, ios::app | ios::out);
 	}
-	if (dis[fd].fd < 0) {
-		perror("Open file failed");
+	if (dis[fd].file_stream.fail()) {
+		LOG_ERROR(dis[fd].address);
+		cout<<"Open gps file failed\n";
 		exit(1);
 	}
 	char* pt = dis[fd].buffer_for_pre_messsage;
 	char buffer[256]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
-	write(dis[fd].fd, buffer, strlen(buffer));
+	dis[fd].file_stream << buffer;
+	dis[fd].file_stream.flush();
 	LOG_MSG(dis[fd].address, "GPS content");
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
@@ -243,6 +249,7 @@ setup::setup()
 	setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 	int ret = bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {
+		LOG_ERROR(addr);
 		perror("Binding failed");
 		exit(-1);
 	}
