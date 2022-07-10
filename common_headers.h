@@ -95,17 +95,16 @@ class log
 {
 public:
 	~log();
-	void submit_missions(string&& sv);
-	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr);
+	void submit_missions(char*&& sv);
 	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, char*&& msg);
 	void init_log();
 	static inline log* get_instance() {
 		static log log_object;
 		return &log_object;
 	}
-	static void flush_all_missions() {
-		log::get_instance()->write_log();
-	};
+	//static void flush_all_missions() {
+		//log::get_instance()->write_log();
+	//}
 	constexpr void no_logfile() {
 		keep_log = false;
 	};
@@ -118,11 +117,11 @@ private:
 	//FILE* logfile_fd;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
-	queue<string> container;
-	mutex mt;
-	condition_variable condition_var;
+	//queue<string> container;
+	//mutex mt;
+	//condition_variable condition_var;
 
-	void* write_log();
+	//void* write_log();
 };
 
 class epoll_utility

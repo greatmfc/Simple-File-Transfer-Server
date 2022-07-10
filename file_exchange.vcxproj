@@ -113,6 +113,7 @@
       <CppLanguageStandard>c++17</CppLanguageStandard>
       <AdditionalOptions>-pthread %(AdditionalOptions)</AdditionalOptions>
       <DebugInformationFormat>None</DebugInformationFormat>
+      <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>
       <AdditionalOptions>-pthread %(AdditionalOptions)</AdditionalOptions>

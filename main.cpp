@@ -58,7 +58,21 @@ static void parse_arg(char*& arg, char*& port, char*& ip) {
 }
 
 static void sigint_hanl(int sig) {
+#ifdef DEBUG
 	cout << "\rShutting down..." << endl;
+#endif // DEBUG
+	if (sig == SIGINT) {
+		LOG_VOID("Receive SIGINT.");
+	}
+	else if(sig==SIGSEGV) {
+		LOG_VOID("Receive SIGSEGV.");
+	}
+	else if (sig == SIGTERM) {
+		LOG_VOID("Receive SIGTERM.");
+	}
+	else if (sig == SIGKILL) {
+		LOG_VOID("Receive SIGKILL.");
+	}
 	exit(0);
 }
 
@@ -117,6 +131,9 @@ int main(int argc, char* argv[])
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
 		signal(SIGINT, sigint_hanl);
+		signal(SIGSEGV, sigint_hanl);
+		signal(SIGTERM, sigint_hanl);
+		signal(SIGKILL, sigint_hanl);
 		setup st;
 		receive_loop rl(st);
 		rl.loop();

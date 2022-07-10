@@ -7,18 +7,27 @@ log::log()
 log::~log()
 {
 	//fclose(logfile_fd);
-	condition_var.notify_all();
-	log_file.flush();
+	//condition_var.notify_all();
+	//log_file.flush();
 	log_file.close();
 	if (!keep_log) {
 		remove(log_name);
 	}
 }
 
-void log::submit_missions(string&& sv)
+void log::submit_missions(char*&& sv)
 {
-	container.emplace(forward<string>(sv));
-	condition_var.notify_one();
+	char content[128] = { 0 };
+	time(&rawtime);
+	time_info = localtime(&rawtime);
+	strftime(content, 64, "%Y-%m-%d %H:%M:%S ", time_info);
+	strcat(content, "[Local]:");
+	strcat(content, sv);
+	if (strchr(content, '\n') == NULL) {
+		strcat(content, "\n");
+	}
+	log_file << content;
+	log_file.flush();
 }
 
 void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
@@ -42,8 +51,10 @@ void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
 	if (strchr(content, '\n') == NULL) {
 		strcat(content, "\n");
 	}
-	container.emplace(content);
-	condition_var.notify_one();
+	log_file << content;
+	log_file.flush();
+	//container.emplace(content);
+	//condition_var.notify_one();
 }
 
 void log::init_log()
@@ -58,10 +69,11 @@ void log::init_log()
 		exit(1);
 	}
 	//setvbuf(logfile_fd, NULL, _IONBF, 0);
-	thread log_thread(flush_all_missions);
-	log_thread.detach();
+	//thread log_thread(flush_all_missions);
+	//log_thread.detach();
 }
 
+/*
 void* log::write_log()
 {
 	unique_lock<mutex> locker(mt);
@@ -76,4 +88,4 @@ void* log::write_log()
 		container.pop();
 	}
 }
-
+*/
