@@ -170,7 +170,7 @@ void receive_loop::deal_with_gps(int fd)
 		exit(1);
 	}
 	char* pt = dis[fd].buffer_for_pre_messsage;
-	char buffer[256]{ 0 };
+	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	dis[fd].file_stream << buffer;

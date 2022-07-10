@@ -33,7 +33,7 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.707
+#define VERSION 1.710
 #define BUFFER_SIZE 256
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
