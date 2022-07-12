@@ -70,16 +70,12 @@ static void sigint_hanl(int sig) {
 	else if (sig == SIGTERM) {
 		LOG_VOID("Receive SIGTERM.");
 	}
-	else if (sig == SIGKILL) {
-		LOG_VOID("Receive SIGKILL.");
-	}
 	exit(0);
 }
 
 int main(int argc, char* argv[])
 {
 	int opt = 0;
-	int check_mode = 0;
 	bool no_log_file = false;
 	char* mesg = nullptr;
 	char* path = nullptr;
@@ -87,11 +83,6 @@ int main(int argc, char* argv[])
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{
-		case 'c':
-		{
-			check_mode = 1;
-			break; 
-		}
 		case 'm':
 		{
 			mesg = optarg;
@@ -133,7 +124,6 @@ int main(int argc, char* argv[])
 		signal(SIGINT, sigint_hanl);
 		signal(SIGSEGV, sigint_hanl);
 		signal(SIGTERM, sigint_hanl);
-		signal(SIGKILL, sigint_hanl);
 		setup st;
 		receive_loop rl(st);
 		rl.loop();

@@ -15,14 +15,14 @@ log::~log()
 	}
 }
 
-void log::submit_missions(char*&& sv)
+void log::submit_missions(string_view&& sv)
 {
 	char content[128] = { 0 };
 	time(&rawtime);
 	time_info = localtime(&rawtime);
 	strftime(content, 64, "%Y-%m-%d %H:%M:%S ", time_info);
 	strcat(content, "[Local]:");
-	strcat(content, sv);
+	strcat(content, sv.data());
 	if (strchr(content, '\n') == NULL) {
 		strcat(content, "\n");
 	}
@@ -30,7 +30,7 @@ void log::submit_missions(char*&& sv)
 	log_file.flush();
 }
 
-void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
+void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&& msg)
 {
 	char content[128] = { 0 };
 	time(&rawtime);
@@ -47,7 +47,7 @@ void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, char*&& msg)
 	}
 	strcat(content, inet_ntoa(_addr.sin_addr));
 	strcat(content, " ");
-	strcat(content, msg);
+	strcat(content, msg.data());
 	if (strchr(content, '\n') == NULL) {
 		strcat(content, "\n");
 	}

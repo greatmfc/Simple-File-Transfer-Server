@@ -27,14 +27,15 @@
 #include <condition_variable>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <sys/epoll.h>
 #include <fstream>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.710
-#define BUFFER_SIZE 256
+#define VERSION 1.712
+#define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
 #define CONN_INFO_NUMBER 1024
@@ -58,6 +59,7 @@ using std::thread;
 using std::string;
 using std::ios;
 using std::ofstream;
+using std::string_view;
 
 enum MyEnum
 {
@@ -95,8 +97,8 @@ class log
 {
 public:
 	~log();
-	void submit_missions(char*&& sv);
-	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, char*&& msg);
+	void submit_missions(string_view&& sv);
+	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, string_view&& msg);
 	void init_log();
 	static inline log* get_instance() {
 		static log log_object;
@@ -181,6 +183,7 @@ private:
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
+	int get_prefix(int fd);
 	void reset_buffers();
 };
 

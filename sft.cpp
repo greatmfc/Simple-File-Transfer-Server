@@ -66,7 +66,7 @@ void receive_loop::loop()
 				else if (status_code == GPS_TYPE){
 					deal_with_gps(react_fd);
 				}
-				memset(dis[react_fd].buffer_for_pre_messsage, 0, 256);
+				memset(dis[react_fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 			}
 		}
 	}
@@ -79,7 +79,9 @@ int receive_loop::decide_action(int fd)
 	ret = read(fd, dis[fd].buffer_for_pre_messsage, BUFFER_SIZE);
 	if (ret < 0 && errno!=EAGAIN) {
 		LOG_ERROR(dis[fd].address);
+#ifdef DEBUG
 		perror("Something happened while read from client");
+#endif // DEBUG
 		goto end;
 	}
 #ifdef DEBUG
@@ -91,7 +93,7 @@ int receive_loop::decide_action(int fd)
 	case 'm':return MESSAGE_TYPE;
 	case 'f':return FILE_TYPE;
 	case 'g':return GPS_TYPE;
-	default:return NONE_TYPE;
+	default:return get_prefix(fd);
 	}
 	end:return -1;
 }
@@ -126,7 +128,9 @@ void receive_loop::deal_with_file(int fd)
 		ret = write(write_fd, dis[fd].buf, dis[fd].bytes_to_deal_with);
 		if (ret < 0) {
 			LOG_ERROR(dis[fd].address);
+#ifdef DEBUG
 			perror("Server write to local failed");
+#endif // DEBUG
 			exit(1);
 		}
 		dis[fd].bytes_to_deal_with -= ret;
@@ -146,7 +150,7 @@ void receive_loop::deal_with_file(int fd)
 void receive_loop::deal_with_mesg(int fd)
 {
 	char* pt = dis[fd].buffer_for_pre_messsage;
-	char buffer[256]{ 0 };
+	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	char code = '1';
@@ -170,6 +174,7 @@ void receive_loop::deal_with_gps(int fd)
 		exit(1);
 	}
 	char* pt = dis[fd].buffer_for_pre_messsage;
+	while (*pt == ' ') ++pt;
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
@@ -179,6 +184,20 @@ void receive_loop::deal_with_gps(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
 #endif // DEBUG
+}
+
+int receive_loop::get_prefix(int fd)
+{
+	for (auto& charc : dis[fd].buffer_for_pre_messsage) {
+		switch (charc)
+		{
+		case 'm':return MESSAGE_TYPE;
+		case 'f':return FILE_TYPE;
+		case 'g':return GPS_TYPE;
+		default:charc = ' ';
+		}
+	}
+	return NONE_TYPE;
 }
 
 void receive_loop::reset_buffers()
