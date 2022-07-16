@@ -5,6 +5,10 @@ receive_loop::receive_loop(setup& s)
 	pt = &s;
 	len = sizeof(addr);
 	socket_fd = pt->socket_fd;
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, pipe_fd) < 0) {
+		LOG_ERROR(pt->addr);
+		exit(1);
+	}
 }
 
 void receive_loop::loop()
@@ -12,7 +16,11 @@ void receive_loop::loop()
 	int ret=listen(socket_fd, 5);
 	assert(ret >= 0);
 	epoll_instance.add_fd_or_event_to_epoll(socket_fd,false,true,0);
+	epoll_instance.add_fd_or_event_to_epoll(pipe_fd[0], false, true, 0);
 	epoll_instance.set_fd_no_block(socket_fd);
+	signal(SIGALRM, alarm_handler);
+	alarm(ALARM_TIME);
+	LOG_VOID("Server is running.");
 	while (1) {
 		int count=epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
@@ -54,6 +62,12 @@ void receive_loop::loop()
 				if (dis[react_fd].file_stream.is_open()) {
 					dis[react_fd].file_stream.close();
 				}
+			}
+			else if (react_fd == pipe_fd[0]) {
+				char signals[4]={0};
+				recv(pipe_fd[0], signals, sizeof(signals), 0); //从读端接收信号
+				LOG_VOID("Alarm.");
+				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				status_code = decide_action(react_fd);
@@ -204,6 +218,14 @@ void receive_loop::reset_buffers()
 {
 	//memset(pre_msg, 0, sizeof pre_msg);
 	//memset(buffer, 0, sizeof buffer);
+}
+
+void receive_loop::alarm_handler(int sig)
+{
+	int save_errno = errno;
+	int msg = sig;
+	send(pipe_fd[1], (char*)&msg, 1, 0); //把信号传送到管道的写端
+	errno = save_errno;
 }
 
 send_file::send_file(setup& s, char*& path)

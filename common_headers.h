@@ -1,22 +1,23 @@
 #pragma once
 
 #include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cstdarg>
+#include <ctime>
+#include <csignal>
+#include <cassert>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/msg.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <sys/time.h>
-#include <cstring>
 #include <unistd.h>
-#include <cstdlib>
-#include <cstdarg>
 #include <sys/param.h>
 #include <getopt.h>
-#include <ctime>
-#include <csignal>
-#include <cassert>
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <sys/mman.h>
@@ -31,6 +32,9 @@
 #include <thread>
 #include <sys/epoll.h>
 #include <fstream>
+#include <functional>
+#include <future>
+#include <memory>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -41,6 +45,7 @@
 #define CONN_INFO_NUMBER 1024
 #define DATA_INFO_NUMBER 4096
 #define EPOLL_EVENT_NUMBER 1024
+#define ALARM_TIME 10
 
 using std::cout;
 using std::endl;
@@ -60,6 +65,14 @@ using std::string;
 using std::ios;
 using std::ofstream;
 using std::string_view;
+using std::future;
+using std::function;
+using std::bind;
+using std::make_shared;
+using std::packaged_task;
+using std::runtime_error;
+
+static int pipe_fd[2];
 
 enum MyEnum
 {
@@ -185,6 +198,7 @@ private:
 	void deal_with_gps(int fd);
 	int get_prefix(int fd);
 	void reset_buffers();
+	static void alarm_handler(int sig);
 };
 
 class send_file : public basic_action
