@@ -1,5 +1,8 @@
 #include "common_headers.h"
 
+static bool running;
+static int pipe_fd[2];
+
 receive_loop::receive_loop(setup& s)
 {
 	pt = &s;
@@ -11,8 +14,16 @@ receive_loop::receive_loop(setup& s)
 	}
 }
 
+void receive_loop::stop_loop()
+{
+	running = false;
+	char msg = '1';
+	send(pipe_fd[1], &msg, 1, 0);
+}
+
 void receive_loop::loop()
 {
+	running = true;
 	int ret=listen(socket_fd, 5);
 	assert(ret >= 0);
 	epoll_instance.add_fd_or_event_to_epoll(socket_fd,false,true,0);
@@ -21,8 +32,9 @@ void receive_loop::loop()
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_VOID("Server starts.");
+	thread_pool tp;
 	tp.init_pool();
-	while (1) {
+	while (running) {
 		int count=epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
 			LOG_ERROR(pt->addr);
@@ -65,28 +77,32 @@ void receive_loop::loop()
 				}
 			}
 			else if (react_fd == pipe_fd[0]) {
-				char signals[4]={0};
-				recv(pipe_fd[0], signals, sizeof(signals), 0);
+				char signal='2';
+				recv(pipe_fd[0], &signal, sizeof signal, 0);
+				if (signal == '1') continue;
 				LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				auto _future=tp.submit_to_pool(&receive_loop::decide_action, this, react_fd);
-				status_code = _future.get();
-				//status_code = decide_action(react_fd);
-				if (status_code == FILE_TYPE) {
-					deal_with_file(react_fd);
-				}
-				else if (status_code == MESSAGE_TYPE) {
-					deal_with_mesg(react_fd);
-				}
-				else if (status_code == GPS_TYPE){
+				status_code = decide_action(react_fd);
+				switch (status_code)
+				{
+				case FILE_TYPE:
+					tp.submit_to_pool(&receive_loop::deal_with_file,this,react_fd);
+					break;
+				case MESSAGE_TYPE:
+					tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
+					break;
+				case GPS_TYPE:
 					tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
-					//deal_with_gps(react_fd);
+					break;
 				}
 			}
 		}
 	}
+	tp.shutdown_pool();
+	LOG_VOID("Server quits.");
+	exit(0);
 }
 
 int receive_loop::decide_action(int fd)
@@ -220,17 +236,11 @@ int receive_loop::get_prefix(int fd)
 	return NONE_TYPE;
 }
 
-void receive_loop::reset_buffers()
-{
-	//memset(pre_msg, 0, sizeof pre_msg);
-	//memset(buffer, 0, sizeof buffer);
-}
-
-void receive_loop::alarm_handler(int sig)
+void receive_loop::alarm_handler(int)
 {
 	int save_errno = errno;
-	int msg = sig;
-	send(pipe_fd[1], (char*)&msg, 1, 0); //把信号传送到管道的写端
+	char msg = '0';
+	send(pipe_fd[1], &msg, 1, 0);
 	errno = save_errno;
 }
 

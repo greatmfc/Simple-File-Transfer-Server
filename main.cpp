@@ -64,14 +64,13 @@ static void sigint_hanl(int sig) {
 	if (sig == SIGINT) {
 		LOG_VOID("Receive SIGINT.");
 	}
-	else if(sig==SIGSEGV) {
+	else if(sig == SIGSEGV) {
 		LOG_VOID("Receive SIGSEGV.");
 	}
 	else if (sig == SIGTERM) {
 		LOG_VOID("Receive SIGTERM.");
 	}
-	tp.shutdown_pool();
-	exit(0);
+	receive_loop::stop_loop();
 }
 
 int main(int argc, char* argv[])

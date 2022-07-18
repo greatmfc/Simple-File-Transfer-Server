@@ -1,4 +1,4 @@
-CXX = g++ -std=c++17 -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor -Wno-error=unused-variable
+CXX = g++ -std=c++17 -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor -Wno-error=unused-variable -Wno-error=unused-parameter
 
 DEBUGFLAGS += -g -DDEBUG -Og
 

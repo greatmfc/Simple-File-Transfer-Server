@@ -164,8 +164,9 @@ public:
 	template <typename F,typename... Args,typename R=invoke_result_t<decay_t<F>,decay_t<Args>...>>
 	future<R> submit_to_pool(F&& f, Args&& ...args) {
 		function<R()> func_bind = bind(forward<F>(f), forward<Args>(args)...);
-		//contains functions that returns decltype(f(args...)) with no argument
+		//contains functions that returns type R with no extra argument
 		auto task_ptr = make_shared<packaged_task<R()>>(func_bind);
+		//probably with implicit conversion
 		function<void()> wrapper_func = [task_ptr]() {
 			(*task_ptr)();
 		}; //optional
@@ -194,8 +195,6 @@ private:
 	};
 
 };
-
-static thread_pool tp;
 
 class log
 {
@@ -275,6 +274,7 @@ public:
 	receive_loop() = default;
 	receive_loop(setup& s);
 	~receive_loop() = default;
+	static void stop_loop();
 	void loop();
 
 private:
@@ -282,14 +282,12 @@ private:
 	socklen_t len;
 	data_info dis[DATA_INFO_NUMBER];
 	epoll_utility epoll_instance;
-	static int pipe_fd[2];
 
 	int decide_action(int fd);
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
 	int get_prefix(int fd);
-	void reset_buffers();
 	static void alarm_handler(int sig);
 };
 
