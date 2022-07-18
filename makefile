@@ -2,7 +2,7 @@ CXX = g++ -std=c++17 -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor -W
 
 DEBUGFLAGS += -g -DDEBUG -Og
 
-object = epoll_utility.cpp log.cpp sft.cpp main.cpp
+object = thread_pool.cpp epoll_utility.cpp log.cpp sft.cpp main.cpp
 
 LIB = -pthread
 

@@ -20,7 +20,8 @@ void receive_loop::loop()
 	epoll_instance.set_fd_no_block(socket_fd);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
-	LOG_VOID("Server is running.");
+	LOG_VOID("Server starts.");
+	tp.init_pool();
 	while (1) {
 		int count=epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
@@ -65,12 +66,14 @@ void receive_loop::loop()
 			}
 			else if (react_fd == pipe_fd[0]) {
 				char signals[4]={0};
-				recv(pipe_fd[0], signals, sizeof(signals), 0); //从读端接收信号
+				recv(pipe_fd[0], signals, sizeof(signals), 0);
 				LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				status_code = decide_action(react_fd);
+				auto _future=tp.submit_to_pool(&receive_loop::decide_action, this, react_fd);
+				status_code = _future.get();
+				//status_code = decide_action(react_fd);
 				if (status_code == FILE_TYPE) {
 					deal_with_file(react_fd);
 				}
@@ -78,9 +81,9 @@ void receive_loop::loop()
 					deal_with_mesg(react_fd);
 				}
 				else if (status_code == GPS_TYPE){
-					deal_with_gps(react_fd);
+					tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
+					//deal_with_gps(react_fd);
 				}
-				memset(dis[react_fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 			}
 		}
 	}
@@ -159,6 +162,7 @@ void receive_loop::deal_with_file(int fd)
 	LOG_FILE(dis[fd].address, move(msg));
 	delete buf;
 	close(write_fd);
+	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_mesg(int fd)
@@ -173,6 +177,7 @@ void receive_loop::deal_with_mesg(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
 #endif // DEBUG
+	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_gps(int fd)
@@ -198,6 +203,7 @@ void receive_loop::deal_with_gps(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
 #endif // DEBUG
+	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 int receive_loop::get_prefix(int fd)

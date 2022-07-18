@@ -70,6 +70,7 @@ static void sigint_hanl(int sig) {
 	else if (sig == SIGTERM) {
 		LOG_VOID("Receive SIGTERM.");
 	}
+	tp.shutdown_pool();
 	exit(0);
 }
 

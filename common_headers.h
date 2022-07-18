@@ -35,6 +35,9 @@
 #include <functional>
 #include <future>
 #include <memory>
+#include <vector>
+#include <type_traits>
+#include <chrono>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -71,8 +74,12 @@ using std::bind;
 using std::make_shared;
 using std::packaged_task;
 using std::runtime_error;
+using std::vector;
+using std::invoke_result_t;
+using std::decay_t;
+using std::chrono::seconds;
+using std::this_thread::sleep_for;
 
-static int pipe_fd[2];
 
 enum MyEnum
 {
@@ -105,6 +112,90 @@ typedef struct data_info
 	struct iovec iov;
 	sockaddr_in address;
 } data_info;
+
+template <typename T>
+class sync_queue
+{
+public:
+	sync_queue()=default;
+	sync_queue(sync_queue&& other)=default;
+	~sync_queue()=default;
+
+	bool is_empty() { 
+		unique_lock<mutex> lock(locker_mutex);
+		return container.empty(); 
+	}
+
+	int size() {
+		unique_lock<mutex> lock(locker_mutex);
+		return container.size(); 
+	}
+
+	void push(T& t) {
+		unique_lock<mutex> lock(locker_mutex);
+		container.emplace(t);
+	}
+
+	bool pop(T& t) {
+		unique_lock<mutex> lock(locker_mutex);
+		if (container.empty()) return false;
+		t = move(container.front());
+		container.pop();
+		return true;
+	}
+
+private:
+	queue<T> container;
+	mutex locker_mutex;
+};
+
+class thread_pool
+{
+public:
+	thread_pool(const int number_of_threads = 4) :m_threads(vector<thread>(number_of_threads)) {};
+	thread_pool(const thread_pool&) = delete;
+	thread_pool(thread_pool&&) = delete;
+	thread_pool& operator=(const thread_pool&) = delete;
+	thread_pool& operator=(thread_pool&&) = delete;
+	~thread_pool() { shutdown_pool(); };
+	void init_pool();
+	void shutdown_pool();
+
+	template <typename F,typename... Args,typename R=invoke_result_t<decay_t<F>,decay_t<Args>...>>
+	future<R> submit_to_pool(F&& f, Args&& ...args) {
+		function<R()> func_bind = bind(forward<F>(f), forward<Args>(args)...);
+		//contains functions that returns decltype(f(args...)) with no argument
+		auto task_ptr = make_shared<packaged_task<R()>>(func_bind);
+		function<void()> wrapper_func = [task_ptr]() {
+			(*task_ptr)();
+		}; //optional
+		//this wrapper_func contains a lambda function
+		//that captures a shared_ptr and execute after dereference it
+		m_queue.push(wrapper_func);
+		m_cv.notify_one();
+		return task_ptr->get_future();
+	}
+
+private:
+	vector<thread> m_threads;
+	sync_queue<function<void()>> m_queue;
+	bool m_shutdown = false;
+	mutex m_mutex;
+	condition_variable m_cv;
+
+	class thread_pool_worker
+	{
+	public:
+		thread_pool_worker(thread_pool* tp, const int _id) :m_pool(tp), id(_id) {};
+		void operator()();
+	private:
+		thread_pool* m_pool;
+		int id = 0;
+	};
+
+};
+
+static thread_pool tp;
 
 class log
 {
@@ -191,6 +282,7 @@ private:
 	socklen_t len;
 	data_info dis[DATA_INFO_NUMBER];
 	epoll_utility epoll_instance;
+	static int pipe_fd[2];
 
 	int decide_action(int fd);
 	void deal_with_file(int fd);
@@ -230,4 +322,3 @@ private:
 #define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
 #define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
 #define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
-
