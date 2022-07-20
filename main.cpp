@@ -124,6 +124,7 @@ int main(int argc, char* argv[])
 		signal(SIGINT, sigint_hanl);
 		signal(SIGSEGV, sigint_hanl);
 		signal(SIGTERM, sigint_hanl);
+		signal(SIGFPE, sigint_hanl);
 		setup st;
 		receive_loop rl(st);
 		rl.loop();

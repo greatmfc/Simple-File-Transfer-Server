@@ -27,7 +27,7 @@ void log::submit_missions(string_view&& sv)
 		strcat(content, "\n");
 	}
 	log_file << content;
-	log_file.flush();
+	//log_file.flush();
 }
 
 void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&& msg)
@@ -52,7 +52,7 @@ void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&&
 		strcat(content, "\n");
 	}
 	log_file << content;
-	log_file.flush();
+	//log_file.flush();
 	//container.emplace(content);
 	//condition_var.notify_one();
 }

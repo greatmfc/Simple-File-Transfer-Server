@@ -38,6 +38,7 @@
 #include <vector>
 #include <type_traits>
 #include <chrono>
+#include <array>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -46,7 +47,7 @@
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
 #define CONN_INFO_NUMBER 1024
-#define DATA_INFO_NUMBER 4096
+#define DATA_INFO_NUMBER 128
 #define EPOLL_EVENT_NUMBER 1024
 #define ALARM_TIME 10
 
@@ -79,6 +80,7 @@ using std::invoke_result_t;
 using std::decay_t;
 using std::chrono::seconds;
 using std::this_thread::sleep_for;
+using std::array;
 
 
 enum MyEnum
@@ -262,7 +264,7 @@ class basic_action
 {
 protected:
 	basic_action() = default;
-	virtual ~basic_action() = default;
+	~basic_action() = default;
 	int socket_fd;
 	int status_code;
 	setup* pt;

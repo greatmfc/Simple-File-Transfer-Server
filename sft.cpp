@@ -62,15 +62,17 @@ void receive_loop::loop()
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
+					react_fd %= DATA_INFO_NUMBER;
 					dis[accepted_fd].address = addr;
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
 				}
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-				#ifdef DEBUG
-					cout<<"Disconnect from client:"<<inet_ntoa(dis[react_fd].address.sin_addr)<<endl;
-				#endif // DEBUG
-					LOG_CLOSE(dis[react_fd].address);
+				react_fd %= DATA_INFO_NUMBER;
+			#ifdef DEBUG
+				cout<<"Disconnect from client:"<<inet_ntoa(dis[react_fd].address.sin_addr)<<endl;
+			#endif // DEBUG
+				LOG_CLOSE(dis[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
 				if (dis[react_fd].file_stream.is_open()) {
 					dis[react_fd].file_stream.close();
@@ -84,6 +86,7 @@ void receive_loop::loop()
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
+				react_fd %= DATA_INFO_NUMBER;
 				status_code = decide_action(react_fd);
 				switch (status_code)
 				{
@@ -101,6 +104,11 @@ void receive_loop::loop()
 		}
 	}
 	tp.shutdown_pool();
+	for (auto& d : dis) {
+		if (d.file_stream.is_open()) {
+			d.file_stream.close();
+		}
+	}
 	LOG_VOID("Server quits.");
 	exit(0);
 }
@@ -214,7 +222,7 @@ void receive_loop::deal_with_gps(int fd)
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	dis[fd].file_stream << buffer;
-	dis[fd].file_stream.flush();
+	//dis[fd].file_stream.flush();
 	LOG_MSG(dis[fd].address, "GPS content");
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
