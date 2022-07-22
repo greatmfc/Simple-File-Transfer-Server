@@ -1,7 +1,11 @@
 ﻿#include "common_headers.h"
 
 static void usage() {
-	fprintf(stderr, "sft [option] [argument] ip:port\n"
+	fprintf(stderr,
+		"server mode:"
+		"sft"
+		"client mode:"
+		"sft [option] [argument] ip:port\n"
 		"options: \n"
 		"-c				Check mode for identification before receiving.\n"
 		"-f				File mode for sending file.Argument is your file's path.\n"
