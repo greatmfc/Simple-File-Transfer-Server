@@ -42,7 +42,7 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.720
+#define VERSION 1.723
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -78,9 +78,10 @@ using std::runtime_error;
 using std::vector;
 using std::invoke_result_t;
 using std::decay_t;
-using std::chrono::seconds;
+using namespace std::chrono_literals;
 using std::this_thread::sleep_for;
 using std::array;
+using std::cerr;
 
 
 enum MyEnum
@@ -289,6 +290,7 @@ private:
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
+    void close_connection(int fd);
 	int get_prefix(int fd);
 	static void alarm_handler(int sig);
 };

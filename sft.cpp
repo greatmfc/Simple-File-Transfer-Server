@@ -62,21 +62,15 @@ void receive_loop::loop()
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
-					react_fd %= DATA_INFO_NUMBER;
+					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, true, true, 0);
+					accepted_fd %= DATA_INFO_NUMBER;
 					dis[accepted_fd].address = addr;
-					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
+					dis[accepted_fd].reserved_var = 1;
 				}
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 				react_fd %= DATA_INFO_NUMBER;
-			#ifdef DEBUG
-				cout<<"Disconnect from client:"<<inet_ntoa(dis[react_fd].address.sin_addr)<<endl;
-			#endif // DEBUG
-				LOG_CLOSE(dis[react_fd].address);
-				epoll_instance.remove_fd_from_epoll(react_fd);
-				if (dis[react_fd].file_stream.is_open()) {
-					dis[react_fd].file_stream.close();
-				}
+				close_connection(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
 				char signal='2';
@@ -118,12 +112,16 @@ int receive_loop::decide_action(int fd)
 	char msg1 = '1';
 	ssize_t ret = 0;
 	ret = read(fd, dis[fd].buffer_for_pre_messsage, BUFFER_SIZE);
-	if (ret < 0 && errno!=EAGAIN) {
+	if (ret < 0 && errno != EAGAIN) {
 		LOG_ERROR(dis[fd].address);
 #ifdef DEBUG
 		perror("Something happened while read from client");
 #endif // DEBUG
 		goto end;
+	}
+	if (dis[fd].buffer_for_pre_messsage[0] != 'f' && dis[fd].reserved_var) {
+		epoll_instance.add_fd_or_event_to_epoll(fd, false, true, 0);
+		dis[fd].reserved_var = 0;
 	}
 #ifdef DEBUG
 	cout << "Read msg from client: " << dis[fd].buffer_for_pre_messsage << endl;
@@ -184,6 +182,7 @@ void receive_loop::deal_with_file(int fd)
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
 	LOG_FILE(dis[fd].address, move(msg));
+	close_connection(fd);
 	delete buf;
 	close(write_fd);
 	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
@@ -228,6 +227,18 @@ void receive_loop::deal_with_gps(int fd)
 	cout << "Success on receiving GPS: " << buffer;
 #endif // DEBUG
 	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+}
+
+void receive_loop::close_connection(int fd)
+{
+#ifdef DEBUG
+	cout << "Disconnect from client:" << inet_ntoa(dis[fd].address.sin_addr) << endl;
+#endif // DEBUG
+	LOG_CLOSE(dis[fd].address);
+	epoll_instance.remove_fd_from_epoll(fd);
+	if (dis[fd].file_stream.is_open()) {
+		dis[fd].file_stream.close();
+	}
 }
 
 int receive_loop::get_prefix(int fd)

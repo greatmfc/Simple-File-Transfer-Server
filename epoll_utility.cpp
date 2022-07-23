@@ -25,7 +25,9 @@ void epoll_utility::add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et,
         events.events = EPOLLIN | EPOLLRDHUP | ev;
     if (one_shot)
         events.events |= EPOLLONESHOT;
-    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &events);
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &events) < 0) {
+        epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &events);
+    }
 }
 
 int epoll_utility::wait_for_epoll()
