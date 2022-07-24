@@ -42,14 +42,14 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.723
+#define VERSION 1.724
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
 #define CONN_INFO_NUMBER 1024
 #define DATA_INFO_NUMBER 128
 #define EPOLL_EVENT_NUMBER 1024
-#define ALARM_TIME 10
+#define ALARM_TIME 300
 
 using std::cout;
 using std::endl;

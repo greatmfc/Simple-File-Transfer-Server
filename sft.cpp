@@ -62,7 +62,7 @@ void receive_loop::loop()
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
-					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, true, true, 0);
+					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
 					accepted_fd %= DATA_INFO_NUMBER;
 					dis[accepted_fd].address = addr;
 					dis[accepted_fd].reserved_var = 1;
@@ -85,7 +85,7 @@ void receive_loop::loop()
 				switch (status_code)
 				{
 				case FILE_TYPE:
-					tp.submit_to_pool(&receive_loop::deal_with_file,this,react_fd);
+					deal_with_file(react_fd);
 					break;
 				case MESSAGE_TYPE:
 					tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
@@ -118,10 +118,6 @@ int receive_loop::decide_action(int fd)
 		perror("Something happened while read from client");
 #endif // DEBUG
 		goto end;
-	}
-	if (dis[fd].buffer_for_pre_messsage[0] != 'f' && dis[fd].reserved_var) {
-		epoll_instance.add_fd_or_event_to_epoll(fd, false, true, 0);
-		dis[fd].reserved_var = 0;
 	}
 #ifdef DEBUG
 	cout << "Read msg from client: " << dis[fd].buffer_for_pre_messsage << endl;
@@ -182,7 +178,6 @@ void receive_loop::deal_with_file(int fd)
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
 	LOG_FILE(dis[fd].address, move(msg));
-	close_connection(fd);
 	delete buf;
 	close(write_fd);
 	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
