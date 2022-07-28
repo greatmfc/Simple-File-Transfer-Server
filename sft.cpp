@@ -35,7 +35,7 @@ void receive_loop::loop()
 	thread_pool tp;
 	tp.init_pool();
 	while (running) {
-		int count=epoll_instance.wait_for_epoll();
+		int count = epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
 			LOG_ERROR(pt->addr);
 			perror("Error epoll_wait");
@@ -63,13 +63,16 @@ void receive_loop::loop()
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
-					accepted_fd %= DATA_INFO_NUMBER;
-					dis[accepted_fd].address = addr;
-					dis[accepted_fd].reserved_var = 1;
+					connection_storage[accepted_fd].address = addr;
+					addr_to_stream[addr.sin_addr.s_addr] = nullptr;
 				}
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-				react_fd %= DATA_INFO_NUMBER;
+			#ifdef DEBUG
+				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
+			#endif // DEBUG
+				LOG_CLOSE(connection_storage[react_fd].address);
+				epoll_instance.remove_fd_from_epoll(react_fd);
 				close_connection(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
@@ -80,7 +83,6 @@ void receive_loop::loop()
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				react_fd %= DATA_INFO_NUMBER;
 				status_code = decide_action(react_fd);
 				switch (status_code)
 				{
@@ -98,9 +100,9 @@ void receive_loop::loop()
 		}
 	}
 	tp.shutdown_pool();
-	for (auto& d : dis) {
-		if (d.file_stream.is_open()) {
-			d.file_stream.close();
+	for (auto& [addr, stream] : addr_to_stream) {
+		if (stream != nullptr) {
+			delete stream;
 		}
 	}
 	LOG_VOID("Server quits.");
@@ -111,23 +113,23 @@ int receive_loop::decide_action(int fd)
 {
 	char msg1 = '1';
 	ssize_t ret = 0;
-	ret = read(fd, dis[fd].buffer_for_pre_messsage, BUFFER_SIZE);
+	ret = read(fd, connection_storage[fd].buffer_for_pre_messsage, BUFFER_SIZE);
 	if (ret < 0 && errno != EAGAIN) {
-		LOG_ERROR(dis[fd].address);
+		LOG_ERROR(connection_storage[fd].address);
 #ifdef DEBUG
 		perror("Something happened while read from client");
 #endif // DEBUG
 		goto end;
 	}
 #ifdef DEBUG
-	cout << "Read msg from client: " << dis[fd].buffer_for_pre_messsage << endl;
+	cout << "Read msg from client: " << connection_storage[fd].buffer_for_pre_messsage << endl;
 #endif // DEBUG
 	write(fd, &msg1, sizeof(msg1));
-	switch (dis[fd].buffer_for_pre_messsage[0])
+	switch (connection_storage[fd].buffer_for_pre_messsage[0])
 	{
 	case 'm':return MESSAGE_TYPE;
 	case 'f':return FILE_TYPE;
-	case 'g':return GPS_TYPE;
+	case 'n':return GPS_TYPE;
 	default:return get_prefix(fd);
 	}
 	end:return -1;
@@ -136,21 +138,21 @@ int receive_loop::decide_action(int fd)
 void receive_loop::deal_with_file(int fd)
 {
 	char full_path[64]="./";
-	char* msg = dis[fd].buffer_for_pre_messsage;
+	char* msg = connection_storage[fd].buffer_for_pre_messsage;
 	msg += 2;
 	ssize_t size = atoi(strchr(msg, '/')+1);
 	strncat(full_path, msg, strcspn(msg, "/"));
 	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	dis[fd].bytes_to_deal_with = size;
-	dis[fd].buf = new char[size];
-	char* buf = dis[fd].buf;
+	connection_storage[fd].bytes_to_deal_with = size;
+	connection_storage[fd].buf = new char[size];
+	char* buf = connection_storage[fd].buf;
 	ssize_t ret = 0;
 	while (size)
 	{
 		ret=read(fd, buf, size);
 		if (ret < 0)
 		{
-			LOG_ERROR(dis[fd].address);
+			LOG_ERROR(connection_storage[fd].address);
 			perror("Receieve failed");
 			exit(1);
 		}
@@ -158,87 +160,88 @@ void receive_loop::deal_with_file(int fd)
 		buf += ret;
 	}
 	//di->fd = write_fd;
-	buf = dis[fd].buf;
+	buf = connection_storage[fd].buf;
 	for (;;) {
-		ret = write(write_fd, dis[fd].buf, dis[fd].bytes_to_deal_with);
+		ret = write(write_fd, connection_storage[fd].buf, connection_storage[fd].bytes_to_deal_with);
 		if (ret < 0) {
-			LOG_ERROR(dis[fd].address);
+			LOG_ERROR(connection_storage[fd].address);
 #ifdef DEBUG
 			perror("Server write to local failed");
 #endif // DEBUG
 			exit(1);
 		}
-		dis[fd].bytes_to_deal_with -= ret;
-		dis[fd].buf += ret;
-		if (dis[fd].bytes_to_deal_with <= 0) {
+		connection_storage[fd].bytes_to_deal_with -= ret;
+		connection_storage[fd].buf += ret;
+		if (connection_storage[fd].bytes_to_deal_with <= 0) {
 			break;
 		}
 	}
 #ifdef DEBUG
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
-	LOG_FILE(dis[fd].address, move(msg));
+	LOG_FILE(connection_storage[fd].address, move(msg));
 	delete buf;
 	close(write_fd);
-	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_mesg(int fd)
 {
-	char* pt = dis[fd].buffer_for_pre_messsage;
+	char* pt = connection_storage[fd].buffer_for_pre_messsage;
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	char code = '1';
 	write(fd, &code, sizeof code);
-	LOG_MSG(dis[fd].address, move(buffer));
+	LOG_MSG(connection_storage[fd].address, move(buffer));
 #ifdef DEBUG
 	cout << "Success on receiving message: " << buffer;
 #endif // DEBUG
-	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_gps(int fd)
 {
 	char file_name[32] = "gps_";
-	strcat(file_name, inet_ntoa(dis[fd].address.sin_addr));
-	if (!dis[fd].file_stream.is_open()) {
-		dis[fd].file_stream.open(file_name, ios::app | ios::out);
+	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
+	strcat(file_name, inet_ntoa(tmp_addr));
+	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
+		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);
+		if (addr_to_stream[tmp_addr.s_addr]->fail()) {
+			LOG_ERROR(connection_storage[fd].address);
+			cout << "Open gps file failed\n";
+			exit(1);
+		}
 	}
-	if (dis[fd].file_stream.fail()) {
-		LOG_ERROR(dis[fd].address);
-		cout<<"Open gps file failed\n";
-		exit(1);
-	}
-	char* pt = dis[fd].buffer_for_pre_messsage;
+	char* pt = connection_storage[fd].buffer_for_pre_messsage;
 	while (*pt == ' ') ++pt;
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
-	dis[fd].file_stream << buffer;
-	//dis[fd].file_stream.flush();
-	LOG_MSG(dis[fd].address, "GPS content");
+	*addr_to_stream[tmp_addr.s_addr] << buffer;
+	//addr_to_stream[tmp_addr.s_addr].flush();
+	LOG_MSG(connection_storage[fd].address, "GPS content");
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
 #endif // DEBUG
-	memset(dis[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::close_connection(int fd)
 {
-#ifdef DEBUG
-	cout << "Disconnect from client:" << inet_ntoa(dis[fd].address.sin_addr) << endl;
-#endif // DEBUG
-	LOG_CLOSE(dis[fd].address);
-	epoll_instance.remove_fd_from_epoll(fd);
-	if (dis[fd].file_stream.is_open()) {
-		dis[fd].file_stream.close();
+	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
+	if (addr_to_stream[tmp_addr.s_addr] != nullptr){
+		if (addr_to_stream[tmp_addr.s_addr]->is_open()) {
+			addr_to_stream[tmp_addr.s_addr]->close();
+		}
+		delete addr_to_stream[tmp_addr.s_addr];
+		addr_to_stream[tmp_addr.s_addr] = nullptr;
 	}
 }
 
 int receive_loop::get_prefix(int fd)
 {
-	for (auto& charc : dis[fd].buffer_for_pre_messsage) {
+	for (auto& charc : connection_storage[fd].buffer_for_pre_messsage) {
 		switch (charc)
 		{
 		case 'm':return MESSAGE_TYPE;

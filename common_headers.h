@@ -39,6 +39,7 @@
 #include <type_traits>
 #include <chrono>
 #include <array>
+#include <unordered_map>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -46,8 +47,6 @@
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
-#define CONN_INFO_NUMBER 1024
-#define DATA_INFO_NUMBER 128
 #define EPOLL_EVENT_NUMBER 1024
 #define ALARM_TIME 300
 
@@ -82,6 +81,7 @@ using namespace std::chrono_literals;
 using std::this_thread::sleep_for;
 using std::array;
 using std::cerr;
+using std::unordered_map;
 
 
 enum MyEnum
@@ -107,9 +107,8 @@ typedef struct conn_info //存放文件描述符和文件类型
 
 typedef struct data_info
 {
-	int reserved_var;
+	int reserved_var[8];
 	ssize_t bytes_to_deal_with;
-	ofstream file_stream;
 	char* buf;
 	char buffer_for_pre_messsage[BUFFER_SIZE];
 	struct iovec iov;
@@ -283,8 +282,9 @@ public:
 private:
 	struct sockaddr_in addr;
 	socklen_t len;
-	data_info dis[DATA_INFO_NUMBER];
 	epoll_utility epoll_instance;
+	unordered_map<int, data_info> connection_storage;
+	unordered_map<unsigned int, ofstream*> addr_to_stream;
 
 	int decide_action(int fd);
 	void deal_with_file(int fd);
