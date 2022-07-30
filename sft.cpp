@@ -95,6 +95,9 @@ void receive_loop::loop()
 				case GPS_TYPE:
 					tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
 					break;
+				case GET_TYPE:
+					tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
+					break;
 				}
 			}
 		}
@@ -111,7 +114,6 @@ void receive_loop::loop()
 
 int receive_loop::decide_action(int fd)
 {
-	char msg1 = '1';
 	ssize_t ret = 0;
 	ret = read(fd, connection_storage[fd].buffer_for_pre_messsage, BUFFER_SIZE);
 	if (ret < 0 && errno != EAGAIN) {
@@ -124,19 +126,20 @@ int receive_loop::decide_action(int fd)
 #ifdef DEBUG
 	cout << "Read msg from client: " << connection_storage[fd].buffer_for_pre_messsage << endl;
 #endif // DEBUG
-	write(fd, &msg1, sizeof(msg1));
 	switch (connection_storage[fd].buffer_for_pre_messsage[0])
 	{
-	case 'm':return MESSAGE_TYPE;
 	case 'f':return FILE_TYPE;
 	case 'n':return GPS_TYPE;
-	default:return get_prefix(fd);
+	case 'g':return GET_TYPE;
+	default:return MESSAGE_TYPE;
 	}
 	end:return -1;
 }
 
 void receive_loop::deal_with_file(int fd)
 {
+	char msg1 = '1';
+	write(fd, &msg1, sizeof(msg1));
 	char full_path[64]="./";
 	char* msg = connection_storage[fd].buffer_for_pre_messsage;
 	msg += 2;
@@ -227,6 +230,72 @@ void receive_loop::deal_with_gps(int fd)
 	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
+void receive_loop::deal_with_get_file(int fd)
+{
+	char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
+	char full_path[64] = "./";
+	strncat(full_path, tmp_pt, strlen(tmp_pt));
+	struct stat st;
+	stat(full_path, &st);
+	if (access(full_path, R_OK) != 0 || !S_ISREG(st.st_mode)) {
+		LOG_FILE(connection_storage[fd].address,
+			"No access to request file or it's not regular file.");
+		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		char code = '0';
+		write(fd, &code, sizeof code);
+		return;
+	}
+	char* ptr = full_path;
+
+	int file_fd = open(full_path, O_RDONLY);
+	if (file_fd < 0) {
+		perror("Open file failed");
+		close(fd);
+		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		return;
+	}
+	fstat(file_fd, &st);
+	ptr += 2;
+	ssize_t ret = 0;
+	strcat(ptr, "/");
+	strcat(ptr, to_string(st.st_size).data());
+	write(fd, ptr, strlen(ptr));
+	char flag = '0';
+	ret = recv(fd, &flag, sizeof(flag), 0);
+	if (flag != '1' || ret <= 0) {
+#ifdef DEBUG
+		cout << "Receive flag from server failed.\n";
+		cout << __LINE__ << endl;
+#endif // DEBUG
+		LOG_ERROR(connection_storage[fd].address);
+		LOG_CLOSE(connection_storage[fd].address);
+		epoll_instance.remove_fd_from_epoll(fd);
+		close(fd);
+		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		return;
+	}
+	off_t off = 0;
+	long send_size = st.st_size;
+	while (send_size > 0) {
+		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
+		if(ret < 0)
+		{
+			LOG_ERROR(connection_storage[fd].address);
+		#ifdef DEBUG
+			perror("Sendfile failed");
+		#endif // DEBUG
+			break;
+		}
+	#ifdef DEBUG
+		cout << "have send :" << ret << endl;
+	#endif // DEBUG
+		send_size -= ret;
+	}
+	LOG_FILE(connection_storage[fd].address, "Send file.");
+	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	close(file_fd);
+}
+
 void receive_loop::close_connection(int fd)
 {
 	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
@@ -244,13 +313,12 @@ int receive_loop::get_prefix(int fd)
 	for (auto& charc : connection_storage[fd].buffer_for_pre_messsage) {
 		switch (charc)
 		{
-		case 'm':return MESSAGE_TYPE;
 		case 'f':return FILE_TYPE;
 		case 'g':return GPS_TYPE;
 		default:charc = ' ';
 		}
 	}
-	return NONE_TYPE;
+	return MESSAGE_TYPE;
 }
 
 void receive_loop::alarm_handler(int)
@@ -273,7 +341,8 @@ void send_file::write_to()
 	int file_fd = open(file_path, O_RDONLY);
 	if (file_fd < 0) {
 		perror("Open file failed");
-		exit(1);
+		close(socket_fd);
+		return;
 	}
 	struct stat st;
 	fstat(file_fd, &st);
@@ -287,9 +356,9 @@ void send_file::write_to()
 	char flag = '0';
 	ret = recv(socket_fd, &flag, sizeof(flag), 0);
 	assert(ret >= 0);
-	if (flag != '1') {
-		cout << "Receive flag from server failed.\n";
+	if (flag != '1' || ret < 0) {
 #ifdef DEBUG
+		cout << "Receive flag from server failed.\n";
 		cout << __LINE__ << endl;
 #endif // DEBUG
 		exit(1);
@@ -364,9 +433,9 @@ send_msg::send_msg(setup& s, char*& msg) : msg(msg)
 
 void send_msg::write_to()
 {
-	char pre_msg[256]{ 0 };
-	strcpy(pre_msg, "m/");
-	strcat(pre_msg, msg);
+	char pre_msg[128]{ 0 };
+	//strcpy(pre_msg, "m/");
+	strcpy(pre_msg, msg);
 	write(socket_fd, pre_msg, strlen(pre_msg));
 	char code = '0';
 	read(socket_fd, &code, sizeof code);
@@ -374,5 +443,75 @@ void send_msg::write_to()
 		perror("Something wrong with the server");
 	}
 	close(socket_fd);
+}
+
+get_file::get_file(setup& s, string_view&& msge) {
+	pt = &s;
+	socket_fd = pt->socket_fd;
+	file_name = msge;
+}
+
+void get_file::get_it()
+{
+	char pre_msg[128]{ 0 };
+	strcpy(pre_msg, "g/");
+	strcat(pre_msg, file_name.data());
+	write(socket_fd, pre_msg, strlen(pre_msg));
+	//send a request first
+	data_info dis{};
+	memset(&dis, 0, sizeof dis);
+	ssize_t ret = read(socket_fd, dis.buffer_for_pre_messsage, sizeof dis.buffer_for_pre_messsage);
+	if (ret <= 1) {
+		cerr<<"File might not be found in the server.";
+		exit(1);
+	}
+	char code = '1';
+	write(socket_fd, &code, sizeof(code));
+	//inform the server to send formal data
+
+	char full_path[64]="./";
+	char* msg = dis.buffer_for_pre_messsage;
+	ssize_t size = atoi(strchr(msg, '/')+1);
+	strncat(full_path, msg, strcspn(msg, "/"));
+	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	dis.bytes_to_deal_with = size;
+	dis.buf = new char[size];
+	char* buf = dis.buf;
+	while (size)
+	{
+		ret=read(socket_fd, buf, size);
+		if (ret < 0)
+		{
+			LOG_ERROR(dis.address);
+			perror("Receieve failed");
+			exit(1);
+		}
+		size -= ret;
+		buf += ret;
+	}
+	//di->fd = write_fd;
+	buf = dis.buf;
+	for (;;) {
+		ret = write(write_fd, dis.buf, dis.bytes_to_deal_with);
+		if (ret < 0) {
+			LOG_ERROR(dis.address);
+#ifdef DEBUG
+			perror("Server write to local failed");
+#endif // DEBUG
+			exit(1);
+		}
+		dis.bytes_to_deal_with -= ret;
+		dis.buf += ret;
+		if (dis.bytes_to_deal_with <= 0) {
+			break;
+		}
+	}
+#ifdef DEBUG
+	cout << "Success on getting file: " << msg << endl;
+#endif // DEBUG
+	LOG_FILE(dis.address, move(msg));
+	delete buf;
+	close(write_fd);
+	memset(dis.buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 

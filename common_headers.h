@@ -43,7 +43,7 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.724
+#define VERSION 1.730
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -96,7 +96,8 @@ enum MyEnum
 	READ_PRE,
 	READ_MSG,
 	READ_DATA,
-	WRITE_DATA
+	WRITE_DATA,
+	GET_TYPE
 };
 
 typedef struct conn_info //存放文件描述符和文件类型
@@ -290,6 +291,7 @@ private:
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
+	void deal_with_get_file(int fd);
     void close_connection(int fd);
 	int get_prefix(int fd);
 	static void alarm_handler(int sig);
@@ -316,6 +318,19 @@ public:
 	~send_msg() = default;
 private:
 	char* msg;
+};
+
+class get_file : public basic_action
+{
+public:
+	get_file() = delete;
+	get_file(setup& s, string_view&& msg);
+	~get_file() = default;
+	void get_it();
+
+private:
+	string_view file_name;
+
 };
 
 #define LOG_MSG(_addr,_msg) log::get_instance()->submit_missions(MESSAGE_TYPE,_addr,_msg)

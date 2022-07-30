@@ -83,7 +83,8 @@ int main(int argc, char* argv[])
 	bool no_log_file = false;
 	char* mesg = nullptr;
 	char* path = nullptr;
-	char mode[] = "cm:f:hvn";
+	char* file_to_get = nullptr;
+	char mode[] = "cm:f:g:hvn";
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{
@@ -111,6 +112,11 @@ int main(int argc, char* argv[])
 		{
 			log::get_instance()->no_logfile();
 			no_log_file = true;
+			break;
+		}
+		case 'g':
+		{
+			file_to_get = optarg;
 			break;
 		}
 			default: break;
@@ -145,6 +151,10 @@ int main(int argc, char* argv[])
 		else if (mesg != nullptr) {
 			send_msg sm(st, mesg);
 			sm.write_to();
+		}
+		else if(file_to_get!=nullptr){
+			get_file gf(st, file_to_get);
+			gf.get_it();
 		}
 		delete ip;
 		delete port;
