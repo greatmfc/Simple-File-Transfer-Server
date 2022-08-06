@@ -43,7 +43,7 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.730
+#define VERSION 1.801
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -54,7 +54,6 @@ using std::cout;
 using std::endl;
 using std::invalid_argument;
 using std::to_string;
-using std::mutex;
 using std::unique_lock;
 using std::queue;
 using std::move;
@@ -286,6 +285,8 @@ private:
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connection_storage;
 	unordered_map<unsigned int, ofstream*> addr_to_stream;
+	static inline bool running;
+	static inline int pipe_fd[2];
 
 	int decide_action(int fd);
 	void deal_with_file(int fd);

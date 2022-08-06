@@ -1,9 +1,20 @@
-﻿#include "common_headers.h"
-
-static void usage() {
+﻿#if __cplusplus > 201703L
+#include <csignal>
+#include <iostream>
+#include <getopt.h>
+#include <cstdio>
+#define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
+using std::cout;
+using std::endl;
+import sft;
+import log;
+import structs;
+#else
+#include "common_headers.h"
+void usage() {
 	fprintf(stderr,
 		"server mode:"
-		"sft"
+		"sft [option]"
 		"client mode:"
 		"sft [option] [argument] ip:port\n"
 		"options: \n"
@@ -13,17 +24,20 @@ static void usage() {
 		"-h				This information.\n"
 		"-v				Display version.\n"
 		"-n				No log file left behind after finishing program.\n"
+		"-g				Fetch file from server.\n"
 		"Example:		./sft -f ./file 255.255.255.0:8888\n"
-		"				./sft -m hello,world! 255.255.255.0:8888\n");
+		"				./sft -m hello,world! 255.255.255.0:8888\n"
+		"				./sft -g file_name 255.255.255.0:8888\n"
+	);
 	exit(2);
 }
 
-static void version() {
+void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
 	exit(2);
 }
 
-static void check_file(char*& path) {
+void check_file(char*& path) {
 	if (strchr(path, '/') == NULL) {
 		fprintf(stderr, "Invalid path. Please check the path.\n");
 		exit(1);
@@ -41,7 +55,7 @@ static void check_file(char*& path) {
 	}
 }
 
-static void parse_arg(char*& arg, char*& port, char*& ip) {
+void parse_arg(char*& arg, char*& port, char*& ip) {
 	ip = new char[16];
 	port = new char[8];
 	memset(ip, 0, 16);
@@ -60,6 +74,7 @@ static void parse_arg(char*& arg, char*& port, char*& ip) {
 	}
 	strncpy(ip, arg, sz);
 }
+#endif // __cplusplus > 201703L
 
 static void sigint_hanl(int sig) {
 #ifdef DEBUG

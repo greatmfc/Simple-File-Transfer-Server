@@ -21,7 +21,7 @@ Type `./sft -h`for help.
 ```c
 usage:
 	"server mode:"
-	"sft"
+	"sft [option]"
 	"client mode:"
 	"sft [option] [argument] ip:port\n"
 	"options: \n"
@@ -30,7 +30,10 @@ usage:
 	"-m				Message mode for sending message.Argument is your content.\n"
 	"-h				This information.\n"
 	"-v				Display version.\n"
+	"-n				No log file left behind after finishing program.\n"
+	"-g				Fetch file from server.\n"
 	"Examples:			./sft -f ./file 255.255.255.0:8888\n"
 	"				./sft -m hello,world! 255.255.255.0:8888\n"
+	"				./sft -g file_name 255.255.255.0:8888\n"
 ```
 
