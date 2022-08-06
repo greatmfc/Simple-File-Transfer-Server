@@ -10,7 +10,7 @@ Type the codes below in your terminal:
 
 `cd simple-file-transfer/`
 
- `make`
+ `make` (if gcc12 is not installed, then it is `make sft`)
 
 `make install`(optional)
 
