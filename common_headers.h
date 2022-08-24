@@ -99,7 +99,7 @@ enum MyEnum
 	GET_TYPE
 };
 
-typedef struct conn_info //存放文件描述符和文件类型
+typedef struct conn_info //瀛樻斁鏂囦欢鎻忚堪绗﹀拰鏂囦欢绫诲瀷
 {
 	unsigned fd;
 	unsigned type;
@@ -240,7 +240,7 @@ public:
 	int wait_for_epoll();
 	int set_fd_no_block(int fd);
 	void remove_fd_from_epoll(int fd);
-    epoll_event events[EPOLL_EVENT_NUMBER];
+	epoll_event events[EPOLL_EVENT_NUMBER];
 
 private:
 	int epoll_fd;
@@ -293,7 +293,7 @@ private:
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
 	void deal_with_get_file(int fd);
-    void close_connection(int fd);
+	void close_connection(int fd);
 	int get_prefix(int fd);
 	static void alarm_handler(int sig);
 };

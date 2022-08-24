@@ -1,4 +1,4 @@
-﻿#if __cplusplus > 201703L
+#if __cplusplus > 201703L
 #include <csignal>
 #include <iostream>
 #include <getopt.h>
