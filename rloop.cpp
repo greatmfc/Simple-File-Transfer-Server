@@ -75,7 +75,7 @@ void receive_loop::loop()
 			else if (react_fd == pipe_fd[0]) {
 				char signal='2';
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
-				if (signal == '1') continue;
+				if (signal == '1') break;
 				LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
@@ -94,6 +94,11 @@ void receive_loop::loop()
 					break;
 				case GET_TYPE:
 					tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
+					break;
+				default:
+					LOG_CLOSE(connection_storage[react_fd].address);
+					epoll_instance.remove_fd_from_epoll(react_fd);
+					close_connection(react_fd);
 					break;
 				}
 			}
@@ -128,7 +133,7 @@ int receive_loop::decide_action(int fd)
 	case 'f':return FILE_TYPE;
 	case 'n':return GPS_TYPE;
 	case 'g':return GET_TYPE;
-	default:return MESSAGE_TYPE;
+	case 'm':return MESSAGE_TYPE;
 	}
 	end:return -1;
 }

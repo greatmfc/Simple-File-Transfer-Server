@@ -261,7 +261,7 @@ send_msg::send_msg(setup& s, char*& msg) : msg(msg)
 void send_msg::write_to()
 {
 	char pre_msg[128]{ 0 };
-	//strcpy(pre_msg, "m/");
+	strcpy(pre_msg, "m/");
 	strcpy(pre_msg, msg);
 	write(socket_fd, pre_msg, strlen(pre_msg));
 	char code = '0';
