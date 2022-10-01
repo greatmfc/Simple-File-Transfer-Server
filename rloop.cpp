@@ -219,7 +219,7 @@ void receive_loop::deal_with_gps(int fd)
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
 	*addr_to_stream[tmp_addr.s_addr] << buffer;
-	//addr_to_stream[tmp_addr.s_addr].flush();
+	addr_to_stream[tmp_addr.s_addr]->flush();
 	LOG_MSG(connection_storage[fd].address, "GPS content");
 #ifdef DEBUG
 	cout << "Success on receiving GPS: " << buffer;
