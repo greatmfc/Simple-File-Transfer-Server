@@ -97,6 +97,7 @@
     <ClCompile Include="epoll_utility.cpp" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="rloop.cpp" />
     <ClCompile Include="structs.cpp" />
     <ClCompile Include="thread_pool.cpp" />
     <ClCompile Include="utils.cpp" />
