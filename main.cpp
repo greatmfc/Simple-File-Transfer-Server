@@ -174,6 +174,6 @@ int main(int argc, char* argv[])
 		delete ip;
 		delete port;
 	}
-	cout << "Success on sending. Please check the server." << endl;
+	cout << "Success on dealing. Please check the server." << endl;
 	return 0;
 }

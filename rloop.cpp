@@ -288,7 +288,7 @@ void receive_loop::deal_with_get_file(int fd)
 	#endif // DEBUG
 		send_size -= ret;
 	}
-	LOG_FILE(connection_storage[fd].address, "Send file.");
+	LOG_FILE(connection_storage[fd].address, full_path);
 	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 	close(file_fd);
 }

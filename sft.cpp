@@ -289,7 +289,7 @@ void get_file::get_it()
 	memset(&dis, 0, sizeof dis);
 	ssize_t ret = read(socket_fd, dis.buffer_for_pre_messsage, sizeof dis.buffer_for_pre_messsage);
 	if (ret <= 1) {
-		cerr<<"File might not be found in the server.";
+		cerr<<"File might not be found in the server.\n";
 		exit(1);
 	}
 	char code = '1';
