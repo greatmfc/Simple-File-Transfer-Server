@@ -10,7 +10,17 @@ import sft;
 import log;
 import structs;
 #else
+#include <csignal>
+#include <iostream>
+#include <getopt.h>
+#include <cstring>
+#include <cstdio>
+#include <sys/stat.h>
+#include <locale>
 #include "common_headers.h"
+using std::locale;
+using std::cout;
+using std::endl;
 void usage() {
 	fprintf(stderr,
 		"server mode:"
@@ -100,6 +110,7 @@ int main(int argc, char* argv[])
 	char* path = nullptr;
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
+	locale::global(locale("en_US.UTF-8"));
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{

@@ -2,7 +2,7 @@ CXX = g++
 
 STDVER = -std=c++17
 
-DEBUGFLAGS = -g -DDEBUG -Og
+DEBUGFLAGS = -g -DDEBUG
 
 WARMFLAGS = -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor \
 			-Wno-error=unused-variable -Wno-error=unused-parameter \
@@ -17,7 +17,7 @@ LIB = -pthread
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -Ofast
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O2
 
 test: $(object)
 	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test $(DEBUGFLAGS)

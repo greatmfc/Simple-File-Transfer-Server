@@ -363,3 +363,8 @@ MigrationBackup/
 FodyWeavers.xsd
 /cp.cpp
 /test.cpp
+/structs.cpp
+/utils.cpp
+/file_exchange.sln
+/file_exchange.vcxproj
+/iouring_utility.cpp

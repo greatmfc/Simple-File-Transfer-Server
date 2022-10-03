@@ -1,45 +1,13 @@
 #pragma once
 
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cstdarg>
-#include <ctime>
-#include <csignal>
-#include <cassert>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/msg.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/param.h>
-#include <getopt.h>
-#include <sys/stat.h>
-#include <sys/uio.h>
-#include <sys/mman.h>
-#include <sys/sendfile.h>
-#include <exception>
-#include <iostream>
-#include <mutex>
-#include <condition_variable>
-#include <queue>
-#include <string>
-#include <string_view>
-#include <thread>
-#include <sys/epoll.h>
 #include <fstream>
-#include <functional>
+#include <queue>
+#include <thread>
 #include <future>
-#include <memory>
-#include <vector>
-#include <type_traits>
-#include <chrono>
-#include <array>
-#include <unordered_map>
+#include <condition_variable>
+#include <functional>
+#include <netinet/in.h>
+#include <sys/epoll.h>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -50,38 +18,24 @@
 #define EPOLL_EVENT_NUMBER 1024
 #define ALARM_TIME 300
 
-using std::cout;
-using std::endl;
-using std::invalid_argument;
-using std::to_string;
-using std::unique_lock;
-using std::queue;
-using std::move;
-using std::forward;
-using std::exit;
-using std::condition_variable;
 using std::mutex;
-using std::unique_lock;
-using std::thread;
-using std::string;
-using std::ios;
-using std::ofstream;
-using std::string_view;
-using std::future;
-using std::function;
-using std::bind;
-using std::make_shared;
-using std::packaged_task;
-using std::runtime_error;
-using std::vector;
+using std::queue;
 using std::invoke_result_t;
 using std::decay_t;
-using namespace std::chrono_literals;
-using std::this_thread::sleep_for;
-using std::array;
-using std::cerr;
+using std::vector;
+using std::move;
+using std::forward;
+using std::future;
+using std::function;
+using std::condition_variable;
+using std::string_view;
+using std::thread;
+using std::ofstream;
 using std::unordered_map;
-
+using std::unique_lock;
+using std::make_shared;
+using std::packaged_task;
+using std::bind;
 
 enum MyEnum
 {

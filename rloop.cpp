@@ -1,4 +1,22 @@
+#include <cstring>
+#include <cstdlib>
+#include <cassert>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <iostream>
+#include <string_view>
+#include <unordered_map>
 #include "common_headers.h"
+using std::cout;
+using std::endl;
+using std::to_string;
+using std::ios;
 
 receive_loop::receive_loop(setup& s)
 {
@@ -61,7 +79,6 @@ void receive_loop::loop()
 					LOG_ACCEPT(addr);
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
 					connection_storage[accepted_fd].address = addr;
-					addr_to_stream[addr.sin_addr.s_addr] = nullptr;
 				}
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {

@@ -24,6 +24,8 @@ export{
 }
 using std::exit;
 #else
+#include <sys/fcntl.h>
+#include <unistd.h>
 #include "common_headers.h"
 #endif // __cplusplus > 201703L
 

@@ -153,7 +153,21 @@ export{
 }
 
 #else
+#include <cstring>
+#include <cassert>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <exception>
+#include <iostream>
 #include "common_headers.h"
+using std::cout;
+using std::cerr;
+using std::endl;
+using std::to_string;
+using std::invalid_argument;
 #endif // __cplusplus > 201703L
 
 send_file::send_file(setup& s, char*& path)

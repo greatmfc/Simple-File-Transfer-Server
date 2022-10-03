@@ -46,7 +46,15 @@ export{
 	};
 }
 #else
+#include <ctime>
+#include <cstring>
+#include <iostream>
+#include <string_view>
+#include <fstream>
+#include <arpa/inet.h>
 #include "common_headers.h"
+using std::cerr;
+using std::ios;
 #endif // __cplusplus > 201703L
 
 log::log()
