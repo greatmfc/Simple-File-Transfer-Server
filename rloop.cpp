@@ -253,7 +253,7 @@ void receive_loop::deal_with_get_file(int fd)
 {
 	char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
 	char full_path[64] = "./";
-	strncat(full_path, tmp_pt, strlen(tmp_pt));
+	strncat(full_path, tmp_pt, strlen(tmp_pt)%62);
 	struct stat st;
 	stat(full_path, &st);
 	if (access(full_path, R_OK) != 0 || !S_ISREG(st.st_mode)) {
