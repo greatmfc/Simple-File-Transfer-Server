@@ -4,7 +4,6 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <arpa/inet.h>
-#include <sys/time.h>
 #include <unistd.h>
 #include <sys/param.h>
 #include <sys/stat.h>
@@ -85,7 +84,8 @@ void receive_loop::loop()
 			#ifdef DEBUG
 				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
 			#endif // DEBUG
-				LOG_CLOSE(connection_storage[react_fd].address);
+				LOG(LINFO, "Closed by: ", ADDRSTR(connection_storage[react_fd].address.sin_addr));
+				//LOG_CLOSE(connection_storage[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
 				close_connection(react_fd);
 			}
@@ -93,7 +93,8 @@ void receive_loop::loop()
 				char signal='2';
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
 				if (signal == '1') break;
-				LOG_VOID("Alarm.");
+				LOG(LINFO, "Tick.");
+				//LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
@@ -113,7 +114,11 @@ void receive_loop::loop()
 					tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
 					break;
 				default:
-					LOG_CLOSE(connection_storage[react_fd].address);
+					LOG(LINFO,
+						"Closing: ",
+						ADDRSTR(connection_storage[react_fd].address.sin_addr)
+						," Received unknown request");
+					//LOG_CLOSE(connection_storage[react_fd].address);
 					epoll_instance.remove_fd_from_epoll(react_fd);
 					close_connection(react_fd);
 					break;

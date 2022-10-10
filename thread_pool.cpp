@@ -1,4 +1,4 @@
-#if __cplusplus > 201703L
+#ifdef __cpp_modules
 module;
 #include <mutex>
 #include <condition_variable>

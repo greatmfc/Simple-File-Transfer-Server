@@ -1,4 +1,157 @@
-#if __cplusplus > 201703L
+#ifdef __cpp_modules
+module;
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <cassert>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <sys/time.h>
+#include <unistd.h>
+#include <sys/param.h>
+#include <sys/stat.h>
+#include <sys/sendfile.h>
+#include <exception>
+#include <iostream>
+#include <string_view>
+#include <thread>
+#include <sys/epoll.h>
+#include <fstream>
+#include <unordered_map>
+#include <functional>
+#include <future>
+#include <memory>
+
+#define DEFAULT_PORT 9007
+#define VERSION 1.730
+#define BUFFER_SIZE 128
+#define ALARM_TIME 300
+
+#define LOG_MSG(_addr,_msg) log::get_instance()->submit_missions(MESSAGE_TYPE,_addr,_msg)
+#define LOG_FILE(_addr,_msg) log::get_instance()->submit_missions(FILE_TYPE,_addr,_msg)
+#define LOG_ACCEPT(_addr) log::get_instance()->submit_missions(ACCEPT,_addr,"")
+#define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
+#define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
+#define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
+
+export module sft;
+import structs;
+import thpool;
+import epoll_util;
+import log;
+
+using std::cout;
+using std::endl;
+using std::invalid_argument;
+using std::to_string;
+using std::move;
+using std::forward;
+using std::exit;
+using std::thread;
+using std::string;
+using std::ios;
+using std::ofstream;
+using std::string_view;
+using std::runtime_error;
+using std::cerr;
+using std::unordered_map;
+using std::bind;
+using std::future;
+using std::make_shared;
+using std::function;
+using std::packaged_task;
+
+export{
+	class setup
+	{
+	public:
+		setup();
+		setup(char* ip_addr, int port);
+		~setup() = default;
+		int socket_fd;
+		struct sockaddr_in addr;
+
+	private:
+		unsigned long target_addr;
+		int write_to_sock;
+	};
+
+	class basic_action
+	{
+	protected:
+		basic_action() = default;
+		~basic_action() = default;
+		int socket_fd;
+		int status_code;
+		setup* pt;
+	};
+
+	class receive_loop : public basic_action
+	{
+	public:
+		receive_loop() = default;
+		receive_loop(setup& s);
+		~receive_loop() = default;
+		static void stop_loop();
+		void loop();
+
+	private:
+		struct sockaddr_in addr;
+		socklen_t len;
+		epoll_utility epoll_instance;
+		unordered_map<int, data_info> connection_storage;
+		unordered_map<unsigned int, ofstream*> addr_to_stream;
+		static inline bool running;
+		static inline int pipe_fd[2];
+
+		int decide_action(int fd);
+		void deal_with_file(int fd);
+		void deal_with_mesg(int fd);
+		void deal_with_gps(int fd);
+		void deal_with_get_file(int fd);
+		void close_connection(int fd);
+		int get_prefix(int fd);
+		static void alarm_handler(int sig);
+	};
+
+	class send_file : public basic_action
+	{
+	public:
+		send_file() = default;
+		send_file(setup& s, char*& path);
+		~send_file() = default;
+		void write_to();
+
+	private:
+		char* file_path;
+	};
+
+	class send_msg : public basic_action
+	{
+	public:
+		send_msg() = default;
+		send_msg(setup& s, char*& msg);
+		void write_to();
+		~send_msg() = default;
+	private:
+		char* msg;
+	};
+
+	class get_file : public basic_action
+	{
+	public:
+		get_file() = delete;
+		get_file(setup& s, string_view&& msg);
+		~get_file() = default;
+		void get_it();
+
+	private:
+		string_view file_name;
+
+	};
+}
+
 module;
 #include <ctime>
 #include <cstring>
@@ -63,9 +216,6 @@ log::log()
 
 log::~log()
 {
-	//fclose(logfile_fd);
-	//condition_var.notify_all();
-	//log_file.flush();
 	log_file.close();
 	if (!keep_log) {
 		remove(log_name);
@@ -113,8 +263,14 @@ void log::submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&&
 		}
 		log_file << content;
 		log_file.flush();
-		//container.emplace(content);
-		//condition_var.notify_one();
+	}
+}
+
+void log::m_submit_missions(const string& ct)
+{
+	if (keep_log) {
+		log_file << ct;
+		log_file.flush();
 	}
 }
 
@@ -125,29 +281,9 @@ void log::init_log()
 		time_info = localtime(&rawtime);
 		strftime(log_name, 64, "./log_%Y-%m-%d", time_info);
 		log_file.open(log_name, ios::app | ios::out);
-		//logfile_fd = fopen(log_name,"a");
 		if (!log_file.is_open()) {
 			cerr << "Open log file failed\n";
 		}
-		//setvbuf(logfile_fd, NULL, _IONBF, 0);
-		//thread log_thread(flush_all_missions);
-		//log_thread.detach();
 	}
 }
 
-/*
-void* log::write_log()
-{
-	unique_lock<mutex> locker(mt);
-	while (1)
-	{
-		condition_var.wait(locker);
-		if (container.size() == 0) {
-			return nullptr;
-		}
-		log_file << container.front().data();
-		//fputs(container.front().data(), logfile_fd);
-		container.pop();
-	}
-}
-*/

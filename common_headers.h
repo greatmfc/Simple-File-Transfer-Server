@@ -36,6 +36,7 @@ using std::unique_lock;
 using std::make_shared;
 using std::packaged_task;
 using std::bind;
+using std::string;
 
 enum MyEnum
 {
@@ -51,6 +52,14 @@ enum MyEnum
 	READ_DATA,
 	WRITE_DATA,
 	GET_TYPE
+};
+
+enum log_enum
+{
+	LINFO,
+	LDEBUG,
+	LWARN,
+	LERROR
 };
 
 typedef struct conn_info //存放文件描述符和文件类型
@@ -157,15 +166,29 @@ class log
 public:
 	~log();
 	void submit_missions(string_view&& sv);
-	void submit_missions(MyEnum&& type, const struct sockaddr_in& _addr, string_view&& msg);
+	void submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&& msg);
+	template<typename ...Args>
+	void process_and_submit(log_enum&& type, const Args& ...args) {
+		string content;
+		time(&rawtime);
+		time_info = localtime(&rawtime);
+		strftime(content.data(), 64, "%Y-%m-%d %H:%M:%S ", time_info);
+		switch (type)
+		{
+		case LINFO:content += "[Info]:"; break;
+		case LDEBUG:content += "[Debug]:"; break;
+		case LWARN:content += "[Warn]:"; break;
+		case LERROR:content += "[Error]:"; break;
+		}
+		content = (content + ... + args);
+		m_submit_missions(content);
+	}
+
 	void init_log();
 	static inline log* get_instance() {
 		static log log_object;
 		return &log_object;
 	}
-	//static void flush_all_missions() {
-		//log::get_instance()->write_log();
-	//}
 	constexpr void no_logfile() {
 		keep_log = false;
 	};
@@ -175,14 +198,9 @@ private:
 	time_t rawtime;
 	struct tm* time_info;
 	ofstream log_file;
-	//FILE* logfile_fd;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
-	//queue<string> container;
-	//mutex mt;
-	//condition_variable condition_var;
-
-	//void* write_log();
+	void m_submit_missions(const string& ct);
 };
 
 class epoll_utility
@@ -294,3 +312,5 @@ private:
 #define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
 #define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
 #define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
+#define LOG log::get_instance()->process_and_submit
+#define ADDRSTR(_addr) inet_ntoa(_addr)

@@ -1,4 +1,4 @@
-#if __cplusplus > 201703L
+#ifdef __cpp_modules
 module;
 #include <cstdio>
 #include <cstring>
@@ -168,7 +168,7 @@ using std::cerr;
 using std::endl;
 using std::to_string;
 using std::invalid_argument;
-#endif // __cplusplus > 201703L
+#endif
 
 send_file::send_file(setup& s, char*& path)
 {

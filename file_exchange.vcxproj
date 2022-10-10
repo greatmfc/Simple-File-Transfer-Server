@@ -84,13 +84,13 @@
     <EnableASAN>false</EnableASAN>
     <IncludePath>C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VC\Linux\include\usr\include\c++\12;$(IncludePath);C:\Users\22379\AppData\Local\Microsoft\Linux\HeaderCache\1.0\190174071\usr\include\c++\12</IncludePath>
     <MultiProcNumber>1</MultiProcNumber>
-    <RemoteCppCompileToolExe>g++-12</RemoteCppCompileToolExe>
-    <RemoteCCompileToolExe>g++-12</RemoteCCompileToolExe>
+    <RemoteCppCompileToolExe>g++</RemoteCppCompileToolExe>
+    <RemoteCCompileToolExe>gcc</RemoteCCompileToolExe>
     <RemoteLdToolExe>g++-12</RemoteLdToolExe>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <IncludePath>;C:\Users\22379\AppData\Local\Microsoft\Linux\HeaderCache\1.0\190174071\usr\include\c++\12</IncludePath>
-    <RemoteCppCompileToolExe>g++-12</RemoteCppCompileToolExe>
+    <RemoteCppCompileToolExe>g++</RemoteCppCompileToolExe>
     <RemoteCCompileToolExe>gcc</RemoteCCompileToolExe>
   </PropertyGroup>
   <ItemGroup>
@@ -116,7 +116,7 @@
     <ClCompile>
       <Optimization>Disabled</Optimization>
       <CppLanguageStandard>c++17</CppLanguageStandard>
-      <AdditionalOptions> -pthread -DDEBUG -fmodules-ts %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions> -pthread -DDEBUG %(AdditionalOptions)</AdditionalOptions>
       <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link />
@@ -126,7 +126,7 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
-      <CppLanguageStandard>c++20</CppLanguageStandard>
+      <CppLanguageStandard>c++17</CppLanguageStandard>
       <AdditionalOptions>-pthread %(AdditionalOptions)</AdditionalOptions>
       <DebugInformationFormat>None</DebugInformationFormat>
       <Optimization>Disabled</Optimization>
