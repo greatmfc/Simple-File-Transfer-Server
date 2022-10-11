@@ -23,7 +23,7 @@ receive_loop::receive_loop(setup& s)
 	len = sizeof(addr);
 	socket_fd = pt->socket_fd;
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, pipe_fd) < 0) {
-		LOG_ERROR(pt->addr);
+		LOG_ERROR_C(pt->addr);
 		exit(1);
 	}
 }
@@ -45,13 +45,14 @@ void receive_loop::loop()
 	epoll_instance.set_fd_no_block(socket_fd);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
-	LOG_VOID("Server starts.");
+	LOG_INFO("Server starts.");
+	//LOG_VOID("Server starts.");
 	thread_pool tp;
 	tp.init_pool();
 	while (running) {
 		int count = epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
-			LOG_ERROR(pt->addr);
+			LOG_ERROR_C(pt->addr);
 			perror("Error epoll_wait");
 			exit(1);
 		}
@@ -64,7 +65,7 @@ void receive_loop::loop()
 					int accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
 					if (accepted_fd < 0) {
 						if (errno != EAGAIN) {
-							LOG_ERROR(addr);
+							LOG_ERROR_C(addr);
 							perror("Accept failed");
 							exit(1);
 						}
@@ -84,8 +85,8 @@ void receive_loop::loop()
 			#ifdef DEBUG
 				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
 			#endif // DEBUG
-				LOG(LINFO, "Closed by: ", ADDRSTR(connection_storage[react_fd].address.sin_addr));
-				//LOG_CLOSE(connection_storage[react_fd].address);
+				//LOG_INFO("Closed by: ",ADDRSTR(connection_storage[react_fd].address.sin_addr));
+				LOG_CLOSE(connection_storage[react_fd].address);
 				epoll_instance.remove_fd_from_epoll(react_fd);
 				close_connection(react_fd);
 			}
@@ -93,7 +94,7 @@ void receive_loop::loop()
 				char signal='2';
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
 				if (signal == '1') break;
-				LOG(LINFO, "Tick.");
+				LOG_INFO("Tick.");
 				//LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
@@ -114,13 +115,18 @@ void receive_loop::loop()
 					tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
 					break;
 				default:
-					LOG(LINFO,
-						"Closing: ",
-						ADDRSTR(connection_storage[react_fd].address.sin_addr)
-						," Received unknown request");
+					LOG_INFO(
+						"Closing:",
+						ADDRSTR(connection_storage[react_fd].address),
+						" Received unknown request: ",
+						connection_storage[react_fd].buffer_for_pre_messsage);
 					//LOG_CLOSE(connection_storage[react_fd].address);
 					epoll_instance.remove_fd_from_epoll(react_fd);
 					close_connection(react_fd);
+					memset(
+						connection_storage[react_fd].buffer_for_pre_messsage,
+						0,
+						BUFFER_SIZE);
 					break;
 				}
 			}
@@ -132,7 +138,7 @@ void receive_loop::loop()
 			delete stream;
 		}
 	}
-	LOG_VOID("Server quits.");
+	LOG_INFO("Server quits.");
 	exit(0);
 }
 
@@ -141,7 +147,7 @@ int receive_loop::decide_action(int fd)
 	ssize_t ret = 0;
 	ret = read(fd, connection_storage[fd].buffer_for_pre_messsage, BUFFER_SIZE);
 	if (ret < 0 && errno != EAGAIN) {
-		LOG_ERROR(connection_storage[fd].address);
+		LOG_ERROR_C(connection_storage[fd].address);
 #ifdef DEBUG
 		perror("Something happened while read from client");
 #endif // DEBUG
@@ -167,6 +173,7 @@ void receive_loop::deal_with_file(int fd)
 	char full_path[64]="./";
 	char* msg = connection_storage[fd].buffer_for_pre_messsage;
 	msg += 2;
+	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', msg);
 	ssize_t size = atoi(strchr(msg, '/')+1);
 	strncat(full_path, msg, strcspn(msg, "/"));
 	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -179,7 +186,7 @@ void receive_loop::deal_with_file(int fd)
 		ret=read(fd, buf, size);
 		if (ret < 0)
 		{
-			LOG_ERROR(connection_storage[fd].address);
+			LOG_ERROR_C(connection_storage[fd].address);
 			perror("Receieve failed");
 			exit(1);
 		}
@@ -189,9 +196,11 @@ void receive_loop::deal_with_file(int fd)
 	//di->fd = write_fd;
 	buf = connection_storage[fd].buf;
 	for (;;) {
-		ret = write(write_fd, connection_storage[fd].buf, connection_storage[fd].bytes_to_deal_with);
+		ret = write(write_fd,
+			connection_storage[fd].buf,
+			connection_storage[fd].bytes_to_deal_with);
 		if (ret < 0) {
-			LOG_ERROR(connection_storage[fd].address);
+			LOG_ERROR_C(connection_storage[fd].address);
 #ifdef DEBUG
 			perror("Server write to local failed");
 #endif // DEBUG
@@ -206,7 +215,7 @@ void receive_loop::deal_with_file(int fd)
 #ifdef DEBUG
 	cout << "Success on receiving file: " << msg << endl;
 #endif // DEBUG
-	LOG_FILE(connection_storage[fd].address, move(msg));
+	//LOG_FILE(connection_storage[fd].address, move(msg));
 	delete buf;
 	close(write_fd);
 	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
@@ -235,7 +244,7 @@ void receive_loop::deal_with_gps(int fd)
 	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
 		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);
 		if (addr_to_stream[tmp_addr.s_addr]->fail()) {
-			LOG_ERROR(connection_storage[fd].address);
+			LOG_ERROR_C(connection_storage[fd].address);
 			cout << "Open gps file failed\n";
 			exit(1);
 		}
@@ -257,13 +266,16 @@ void receive_loop::deal_with_gps(int fd)
 void receive_loop::deal_with_get_file(int fd)
 {
 	char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
+	LOG_INFO("Receive file request from:",
+		ADDRSTR(connection_storage[fd].address), ' ', tmp_pt);
 	char full_path[64] = "./";
 	strncat(full_path, tmp_pt, strlen(tmp_pt)%62);
 	struct stat st;
 	stat(full_path, &st);
 	if (access(full_path, R_OK) != 0 || !S_ISREG(st.st_mode)) {
-		LOG_FILE(connection_storage[fd].address,
-			"No access to request file or it's not regular file.");
+		LOG_ERROR("No access to request file or it's not regular file.");
+		//LOG_FILE(connection_storage[fd].address,
+		//	"No access to request file or it's not regular file.");
 		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 		char code = '0';
 		write(fd, &code, sizeof code);
@@ -291,7 +303,7 @@ void receive_loop::deal_with_get_file(int fd)
 		cout << "Receive flag from server failed.\n";
 		cout << __LINE__ << endl;
 #endif // DEBUG
-		LOG_ERROR(connection_storage[fd].address);
+		LOG_ERROR_C(connection_storage[fd].address);
 		LOG_CLOSE(connection_storage[fd].address);
 		epoll_instance.remove_fd_from_epoll(fd);
 		close(fd);
@@ -304,7 +316,7 @@ void receive_loop::deal_with_get_file(int fd)
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
 		if(ret < 0)
 		{
-			LOG_ERROR(connection_storage[fd].address);
+			LOG_ERROR_C(connection_storage[fd].address);
 		#ifdef DEBUG
 			perror("Sendfile failed");
 		#endif // DEBUG
@@ -315,7 +327,8 @@ void receive_loop::deal_with_get_file(int fd)
 	#endif // DEBUG
 		send_size -= ret;
 	}
-	LOG_FILE(connection_storage[fd].address, full_path);
+	//LOG_FILE(connection_storage[fd].address, full_path);
+	LOG_INFO("Success on receiving file from client:", ADDRSTR(connection_storage[fd].address));
 	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 	close(file_fd);
 }

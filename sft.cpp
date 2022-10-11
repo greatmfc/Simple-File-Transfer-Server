@@ -233,7 +233,7 @@ setup::setup()
 	setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 	int ret = bind(socket_fd, (struct sockaddr *)&addr, sizeof(addr));
 	if (ret < 0) {
-		LOG_ERROR(addr);
+		LOG_ERROR_C(addr);
 		perror("Binding failed");
 		exit(-1);
 	}
@@ -323,7 +323,7 @@ void get_file::get_it()
 		ret=read(socket_fd, buf, size);
 		if (ret < 0)
 		{
-			LOG_ERROR(dis.address);
+			LOG_ERROR_C(dis.address);
 			perror("Receieve failed");
 			exit(1);
 		}
@@ -335,7 +335,7 @@ void get_file::get_it()
 	for (;;) {
 		ret = write(write_fd, dis.buf, dis.bytes_to_deal_with);
 		if (ret < 0) {
-			LOG_ERROR(dis.address);
+			LOG_ERROR_C(dis.address);
 #ifdef DEBUG
 			perror("Server write to local failed");
 #endif // DEBUG
@@ -350,7 +350,8 @@ void get_file::get_it()
 #ifdef DEBUG
 	cout << "Success on getting file: " << msg << endl;
 #endif // DEBUG
-	LOG_FILE(dis.address, move(msg));
+	LOG_INFO("Fetching file from server:", ADDRSTR(dis.address), ' ', msg);
+	//LOG_FILE(dis.address, move(msg));
 	delete buf;
 	close(write_fd);
 	memset(dis.buffer_for_pre_messsage, 0, BUFFER_SIZE);

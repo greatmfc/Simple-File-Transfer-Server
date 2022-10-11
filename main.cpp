@@ -24,9 +24,9 @@ using std::endl;
 void usage() {
 	fprintf(stderr,
 		"server mode:"
-		"sft [option]"
+		"./sft [option]"
 		"client mode:"
-		"sft [option] [argument] ip:port\n"
+		"./sft [option] [argument] ip:port\n"
 		"options: \n"
 		"-c				Check mode for identification before receiving.\n"
 		"-f				File mode for sending file.Argument is your file's path.\n"
@@ -91,13 +91,13 @@ static void sigint_hanl(int sig) {
 	cout << "\rShutting down..." << endl;
 #endif // DEBUG
 	if (sig == SIGINT) {
-		LOG_VOID("Receive SIGINT.");
+		LOG_WARN("Receive SIGINT.");
 	}
 	else if(sig == SIGSEGV) {
-		LOG_VOID("Receive SIGSEGV.");
+		LOG_WARN("Receive SIGSEGV.");
 	}
 	else if (sig == SIGTERM) {
-		LOG_VOID("Receive SIGTERM.");
+		LOG_WARN("Receive SIGTERM.");
 	}
 	receive_loop::stop_loop();
 }

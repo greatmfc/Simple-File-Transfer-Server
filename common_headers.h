@@ -1,4 +1,5 @@
-#pragma once
+#ifndef CH_H
+#define CH_H
 
 #include <fstream>
 #include <queue>
@@ -11,7 +12,7 @@
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.1003
+#define VERSION 1.1011
 #define BUFFER_SIZE 128
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -165,14 +166,14 @@ class log
 {
 public:
 	~log();
-	void submit_missions(string_view&& sv);
-	void submit_missions(MyEnum&& type, const sockaddr_in& _addr, string_view&& msg);
+
 	template<typename ...Args>
 	void process_and_submit(log_enum&& type, const Args& ...args) {
-		string content;
 		time(&rawtime);
 		time_info = localtime(&rawtime);
-		strftime(content.data(), 64, "%Y-%m-%d %H:%M:%S ", time_info);
+		char tmp[32]{ 0 };
+		strftime(tmp, 32, "%Y-%m-%d %H:%M:%S ", time_info);
+		string content(tmp);
 		switch (type)
 		{
 		case LINFO:content += "[Info]:"; break;
@@ -181,6 +182,7 @@ public:
 		case LERROR:content += "[Error]:"; break;
 		}
 		content = (content + ... + args);
+		content += '\n';
 		m_submit_missions(content);
 	}
 
@@ -306,11 +308,16 @@ private:
 
 };
 
-#define LOG_MSG(_addr,_msg) log::get_instance()->submit_missions(MESSAGE_TYPE,_addr,_msg)
-#define LOG_FILE(_addr,_msg) log::get_instance()->submit_missions(FILE_TYPE,_addr,_msg)
-#define LOG_ACCEPT(_addr) log::get_instance()->submit_missions(ACCEPT,_addr,"")
-#define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
-#define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
-#define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
-#define LOG log::get_instance()->process_and_submit
-#define ADDRSTR(_addr) inet_ntoa(_addr)
+#define ADDRSTR(_addr) inet_ntoa(_addr.sin_addr)
+#define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
+#define LOG_DEBUG(...) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
+#define LOG_WARN(...) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
+#define LOG_ERROR(...) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
+
+#define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",ADDRSTR(_addr),' ',_msg)
+#define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",ADDRSTR(_addr),' ',_msg)
+#define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",ADDRSTR(_addr))
+#define LOG_CLOSE(_addr) LOG_INFO("Close by:",ADDRSTR(_addr))
+#define LOG_ERROR_C(_addr) LOG_ERROR("client:",ADDRSTR(_addr),' ',strerror(errno))
+
+#endif //CH_H
