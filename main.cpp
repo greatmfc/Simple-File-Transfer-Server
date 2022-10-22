@@ -1,4 +1,4 @@
-#ifdef __cpp_modules
+#ifdef ENABLE_MODULES
 #include <csignal>
 #include <iostream>
 #include <getopt.h>

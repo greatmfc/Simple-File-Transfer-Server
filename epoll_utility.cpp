@@ -1,4 +1,4 @@
-#ifdef __cpp_modules
+#ifdef ENABLE_MODULES
 module;
 #include <sys/epoll.h>
 #include <cstdio>

@@ -118,6 +118,7 @@
       <CppLanguageStandard>c++17</CppLanguageStandard>
       <AdditionalOptions> -pthread -DDEBUG %(AdditionalOptions)</AdditionalOptions>
       <CompileAs>Default</CompileAs>
+      <RuntimeTypeInfo>false</RuntimeTypeInfo>
     </ClCompile>
     <Link />
     <Link>

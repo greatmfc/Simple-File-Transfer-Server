@@ -1,4 +1,4 @@
-#ifdef __cpp_modules
+#ifdef ENABLE_MODULES
 module;
 #include <mutex>
 #include <condition_variable>
