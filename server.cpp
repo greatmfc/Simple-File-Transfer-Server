@@ -46,7 +46,10 @@ void receive_loop::loop()
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
-	//LOG_VOID("Server starts.");
+#ifdef DEBUG
+	auto id = std::this_thread::get_id();
+	LOG_DEBUG("The id of main thread is: ", to_string(GETCURID(id)));
+#endif // DEBUG
 	thread_pool tp;
 	tp.init_pool();
 	while (running) {
@@ -168,6 +171,10 @@ int receive_loop::decide_action(int fd)
 
 void receive_loop::deal_with_file(int fd)
 {
+#ifdef DEBUG
+	auto id = std::this_thread::get_id();
+	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
+#endif // DEBUG
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
 	char full_path[64]="./";
@@ -223,6 +230,10 @@ void receive_loop::deal_with_file(int fd)
 
 void receive_loop::deal_with_mesg(int fd)
 {
+#ifdef DEBUG
+	auto id = std::this_thread::get_id();
+	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
+#endif // DEBUG
 	char* pt = connection_storage[fd].buffer_for_pre_messsage;
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
@@ -238,6 +249,10 @@ void receive_loop::deal_with_mesg(int fd)
 
 void receive_loop::deal_with_gps(int fd)
 {
+#ifdef DEBUG
+	auto id = std::this_thread::get_id();
+	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
+#endif // DEBUG
 	char file_name[32] = "gps_";
 	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
 	strcat(file_name, inet_ntoa(tmp_addr));
@@ -265,6 +280,10 @@ void receive_loop::deal_with_gps(int fd)
 
 void receive_loop::deal_with_get_file(int fd)
 {
+#ifdef DEBUG
+	auto id = std::this_thread::get_id();
+	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
+#endif // DEBUG
 	char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
 	LOG_INFO("Receive file request from:",
 		ADDRSTR(connection_storage[fd].address), ' ', tmp_pt);

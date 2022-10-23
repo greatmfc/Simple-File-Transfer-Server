@@ -97,12 +97,12 @@
     <ClCompile Include="epoll_utility.cpp" />
     <ClCompile Include="log.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="rloop.cpp" />
+    <ClCompile Include="server.cpp" />
     <ClCompile Include="thread_pool.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common_headers.h" />
-    <ClCompile Include="sft.cpp">
+    <ClCompile Include="client.cpp">
       <FileType>CppCode</FileType>
     </ClCompile>
   </ItemGroup>

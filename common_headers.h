@@ -9,6 +9,7 @@
 #include <functional>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <sys/time.h>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
@@ -169,17 +170,19 @@ public:
 
 	template<typename ...Args>
 	void process_and_submit(log_enum&& type, const Args& ...args) {
+		gettimeofday(&seconds, NULL);
 		time(&rawtime);
 		time_info = localtime(&rawtime);
 		char tmp[32]{ 0 };
-		strftime(tmp, 32, "%Y-%m-%d %H:%M:%S ", time_info);
+		strftime(tmp, 32, "%Y-%m-%d %H:%M:%S.", time_info);
 		string content(tmp);
+		content += std::to_string(seconds.tv_usec);
 		switch (type)
 		{
-		case LINFO:content += "[Info]:"; break;
-		case LDEBUG:content += "[Debug]:"; break;
-		case LWARN:content += "[Warn]:"; break;
-		case LERROR:content += "[Error]:"; break;
+		case LINFO:content += " [Info]:"; break;
+		case LDEBUG:content += " [Debug]:"; break;
+		case LWARN:content += " [Warn]:"; break;
+		case LERROR:content += " [Error]:"; break;
 		}
 		content = (content + ... + args);
 		content += '\n';
@@ -202,6 +205,7 @@ private:
 	ofstream log_file;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
+	struct timeval seconds = { 0, 0 };
 	void m_submit_missions(const string& ct);
 };
 
@@ -308,9 +312,11 @@ private:
 
 };
 
+#define GETCURID(_id) *(thread::native_handle_type*)&id
 #define ADDRSTR(_addr) inet_ntoa(_addr.sin_addr)
 #define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
 #define LOG_DEBUG(...) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
+#define LOG_VERBOSE log::get_instance()->process_and_submit(LDEBUG,"in ",__FILE__,':',std::to_string(__LINE__))
 #define LOG_WARN(...) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
 #define LOG_ERROR(...) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
 
