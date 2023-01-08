@@ -368,3 +368,5 @@ FodyWeavers.xsd
 /file_exchange.sln
 /file_exchange.vcxproj
 /iouring_utility.cpp
+/file_exchange.vcxproj
+/file_exchange.vcxproj.filters

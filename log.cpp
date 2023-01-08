@@ -80,9 +80,8 @@ void log::m_submit_missions(const string& ct)
 void log::init_log()
 {
 	if (keep_log) {
-		time(&rawtime);
-		time_info = localtime(&rawtime);
-		strftime(log_name, 64, "./log_%Y-%m-%d", time_info);
+		timespec_get(&ts, TIME_UTC);
+		strftime(log_name, 64, "./log_%F", localtime(&ts.tv_sec));
 		log_file.open(log_name, ios::app | ios::out);
 		if (!log_file.is_open()) {
 			cerr << "Open log file failed\n";

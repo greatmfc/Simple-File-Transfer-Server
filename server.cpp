@@ -284,14 +284,17 @@ void receive_loop::deal_with_get_file(int fd)
 	auto id = std::this_thread::get_id();
 	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
 #endif // DEBUG
-	char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
+	//char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
 	LOG_INFO("Receive file request from:",
-		ADDRSTR(connection_storage[fd].address), ' ', tmp_pt);
-	char full_path[64] = "./";
-	strncat(full_path, tmp_pt, strlen(tmp_pt)%62);
+		ADDRSTR(connection_storage[fd].address), ' ',
+		&connection_storage[fd].buffer_for_pre_messsage[2]);
+	string full_path("./");
+	full_path += &connection_storage[fd].buffer_for_pre_messsage[2];
+	//char full_path[BUFFER_SIZE+2] = "./";
+	//strncat(full_path, tmp_pt, BUFFER_SIZE);
 	struct stat st;
-	stat(full_path, &st);
-	if (access(full_path, R_OK) != 0 || !S_ISREG(st.st_mode)) {
+	stat(full_path.c_str(), &st);
+	if (access(full_path.c_str(), R_OK) != 0 || !S_ISREG(st.st_mode)) {
 		LOG_ERROR("No access to request file or it's not regular file.");
 		//LOG_FILE(connection_storage[fd].address,
 		//	"No access to request file or it's not regular file.");
@@ -300,9 +303,9 @@ void receive_loop::deal_with_get_file(int fd)
 		write(fd, &code, sizeof code);
 		return;
 	}
-	char* ptr = full_path;
+	//char* ptr = full_path;
 
-	int file_fd = open(full_path, O_RDONLY);
+	int file_fd = open(full_path.c_str(), O_RDONLY);
 	if (file_fd < 0) {
 		perror("Open file failed");
 		close(fd);
@@ -310,11 +313,13 @@ void receive_loop::deal_with_get_file(int fd)
 		return;
 	}
 	fstat(file_fd, &st);
-	ptr += 2;
+	string react_msg(&full_path.c_str()[2]);
+	//ptr += 2;
+	//strcat(ptr, "/");
+	//strcat(ptr, to_string(st.st_size).data());
+	react_msg += '/' + to_string(st.st_size);
+	write(fd, react_msg.c_str(), react_msg.size());
 	ssize_t ret = 0;
-	strcat(ptr, "/");
-	strcat(ptr, to_string(st.st_size).data());
-	write(fd, ptr, strlen(ptr));
 	char flag = '0';
 	ret = recv(fd, &flag, sizeof(flag), 0);
 	if (flag != '1' || ret <= 0) {

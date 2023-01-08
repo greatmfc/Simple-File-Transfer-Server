@@ -8,7 +8,7 @@ WARMFLAGS = -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor \
 			-Wno-error=unused-variable -Wno-error=unused-parameter \
 			-Wno-error=stringop-overflow
 
-object = thread_pool.cpp epoll_utility.cpp log.cpp sft.cpp rloop.cpp main.cpp
+object = thread_pool.cpp epoll_utility.cpp log.cpp server.cpp client.cpp main.cpp
 
 output = sft
 
@@ -17,7 +17,7 @@ LIB = -pthread
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O2
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -Ofast
 
 test: $(object)
 	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test $(DEBUGFLAGS)

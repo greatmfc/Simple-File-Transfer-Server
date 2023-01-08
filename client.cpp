@@ -170,7 +170,7 @@ using std::to_string;
 using std::invalid_argument;
 #endif
 
-send_file::send_file(setup& s, char*& path)
+send_file::send_file(setup& s,const string& path)
 {
 	pt = &s;
 	file_path = path;
@@ -179,7 +179,7 @@ send_file::send_file(setup& s, char*& path)
 
 void send_file::write_to()
 {
-	int file_fd = open(file_path, O_RDONLY);
+	int file_fd = open(file_path.data(), O_RDONLY);
 	if (file_fd < 0) {
 		perror("Open file failed");
 		close(socket_fd);
@@ -188,7 +188,7 @@ void send_file::write_to()
 	struct stat st;
 	fstat(file_fd, &st);
 	ssize_t ret = 0;
-	char *msg = strrchr(file_path, '/') + 1;
+	char *msg = strrchr(file_path.data(), '/') + 1;
 	strcat(msg, "/");
 	strcat(msg, to_string(st.st_size).data());
 	char complete_msg[] = "f/";
@@ -218,7 +218,7 @@ void send_file::write_to()
 	#endif // DEBUG
 		send_size -= ret;
 	}
-	close(socket_fd);
+	//close(socket_fd);
 	close(file_fd);
 }
 
@@ -239,7 +239,7 @@ setup::setup()
 	}
 }
 
-setup::setup(char* ip_addr,int port)
+setup::setup(const char* ip_addr,const int port)
 {
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -266,7 +266,7 @@ setup::setup(char* ip_addr,int port)
 	}
 }
 
-send_msg::send_msg(setup& s, char*& msg) : msg(msg)
+send_msg::send_msg(setup& s, const string_view& msg) : msg(msg)
 {
 	pt = &s;
 	socket_fd = pt->socket_fd;
@@ -276,14 +276,14 @@ void send_msg::write_to()
 {
 	char pre_msg[128]{ 0 };
 	strcpy(pre_msg, "m/");
-	strcpy(pre_msg, msg);
+	strcpy(pre_msg, msg.data());
 	write(socket_fd, pre_msg, strlen(pre_msg));
 	char code = '0';
 	read(socket_fd, &code, sizeof code);
 	if (code != '1') {
 		perror("Something wrong with the server");
 	}
-	close(socket_fd);
+	//close(socket_fd);
 }
 
 get_file::get_file(setup& s, string_view&& msge) {
@@ -323,7 +323,7 @@ void get_file::get_it()
 		ret=read(socket_fd, buf, size);
 		if (ret < 0)
 		{
-			LOG_ERROR_C(dis.address);
+			//LOG_ERROR_C(dis.address);
 			perror("Receieve failed");
 			exit(1);
 		}
@@ -335,7 +335,7 @@ void get_file::get_it()
 	for (;;) {
 		ret = write(write_fd, dis.buf, dis.bytes_to_deal_with);
 		if (ret < 0) {
-			LOG_ERROR_C(dis.address);
+			//LOG_ERROR_C(dis.address);
 #ifdef DEBUG
 			perror("Server write to local failed");
 #endif // DEBUG
@@ -350,10 +350,10 @@ void get_file::get_it()
 #ifdef DEBUG
 	cout << "Success on getting file: " << msg << endl;
 #endif // DEBUG
-	LOG_INFO("Fetching file from server:", ADDRSTR(dis.address), ' ', msg);
+	//LOG_INFO("Fetching file from server:", ADDRSTR(dis.address), ' ', msg);
 	//LOG_FILE(dis.address, move(msg));
 	delete buf;
-	close(write_fd);
+	//close(write_fd);
 	memset(dis.buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 

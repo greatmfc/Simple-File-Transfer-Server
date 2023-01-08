@@ -9,12 +9,12 @@
 #include <functional>
 #include <netinet/in.h>
 #include <sys/epoll.h>
-#include <sys/time.h>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define VERSION 1.1011
-#define BUFFER_SIZE 128
+#define LAST_MODIFY 20230108L
+#define VERSION 1.0
+#define BUFFER_SIZE 64
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
 #define EPOLL_EVENT_NUMBER 1024
@@ -170,13 +170,11 @@ public:
 
 	template<typename ...Args>
 	void process_and_submit(log_enum&& type, const Args& ...args) {
-		gettimeofday(&seconds, NULL);
-		time(&rawtime);
-		time_info = localtime(&rawtime);
+		timespec_get(&ts, TIME_UTC);
 		char tmp[32]{ 0 };
-		strftime(tmp, 32, "%Y-%m-%d %H:%M:%S.", time_info);
+		strftime(tmp, 32, "%F %T.", localtime(&ts.tv_sec));
 		string content(tmp);
-		content += std::to_string(seconds.tv_usec);
+		content += std::to_string(ts.tv_nsec);
 		switch (type)
 		{
 		case LINFO:content += " [Info]:"; break;
@@ -200,12 +198,10 @@ public:
 
 private:
 	log();
-	time_t rawtime;
-	struct tm* time_info;
+	timespec ts;
 	ofstream log_file;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
-	struct timeval seconds = { 0, 0 };
 	void m_submit_missions(const string& ct);
 };
 
@@ -228,7 +224,7 @@ class setup
 {
 public:
 	setup();
-	setup(char* ip_addr,int port);
+	setup(const char* ip_addr,const int port);
 	~setup() = default;
 	int socket_fd;
 	struct sockaddr_in addr;
@@ -279,24 +275,24 @@ private:
 class send_file : public basic_action
 {
 public:
-	send_file() = default;
-	send_file(setup& s, char*& path);
+	send_file() = delete;
+	send_file(setup& s, const string& path);
 	~send_file() = default;
 	void write_to();
 
 private:
-	char* file_path;
+	string file_path;
 };
 
 class send_msg : public basic_action
 {
 public:
-	send_msg() = default;
-	send_msg(setup& s, char*& msg);
+	send_msg() = delete;
+	send_msg(setup& s, const string_view& msg);
 	void write_to();
 	~send_msg() = default;
 private:
-	char* msg;
+	string_view msg;
 };
 
 class get_file : public basic_action
