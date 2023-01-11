@@ -13,7 +13,7 @@
 
 #define DEFAULT_PORT 9007
 #define LAST_MODIFY 20230111L
-#define VERSION "1.0.0.2"
+#define VERSION "1.0.1.2"
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \

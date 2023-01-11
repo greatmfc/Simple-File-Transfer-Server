@@ -137,6 +137,9 @@ get_file::get_file(setup& s, string_view&& msge) {
 void get_file::get_it()
 {
 	string pre_msg="g/";
+	if (file_name.find('/') != string_view::npos) {
+		throw std::invalid_argument("File name can not contain path.");
+	}
 	pre_msg += file_name;
 	write(socket_fd, pre_msg.c_str(), pre_msg.length());
 	//send a request first

@@ -203,10 +203,7 @@ void receive_loop::deal_with_file(int fd)
 		if (ret <= 0)
 		{
 			if (errno == EAGAIN) continue;
-			if (ret == 0) {
-				close_connection(fd);
-			}
-			else {
+			if (ret != 0) {
 				LOG_ERROR_C(connection_storage[fd].address);
 				LOG_CLOSE(connection_storage[fd].address);
 			#ifdef DEBUG
@@ -231,9 +228,11 @@ void receive_loop::deal_with_file(int fd)
 		if (ret < 0) {
 			LOG_ERROR_C(connection_storage[fd].address);
 #ifdef DEBUG
-			perror("Server write to local failed");
+			perror("\nServer write to local failed");
 #endif // DEBUG
-			break;
+			delete buf;
+			connection_storage[fd].buffer_for_pre_messsage.clear();
+			return;
 			//exit(1);
 		}
 		connection_storage[fd].bytes_to_deal_with -= ret;
@@ -376,15 +375,18 @@ void receive_loop::deal_with_get_file(int fd)
 	long send_size = st.st_size;
 	while (send_size > 0) {
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
-		if (ret <= 0 && errno != EAGAIN)
+		if (ret <= 0)
 		{
-			LOG_ERROR_C(connection_storage[fd].address);
-			//epoll_instance.remove_fd_from_epoll(fd);
-			LOG_CLOSE(connection_storage[fd].address);
-			close_connection(fd);
-		#ifdef DEBUG
-			perror("Sendfile failed");
-		#endif // DEBUG
+			if (errno == EAGAIN) continue;
+			if (ret != 0) {
+				LOG_ERROR_C(connection_storage[fd].address);
+				//epoll_instance.remove_fd_from_epoll(fd);
+				LOG_CLOSE(connection_storage[fd].address);
+				close_connection(fd);
+			#ifdef DEBUG
+				perror("Sendfile failed");
+			#endif // DEBUG
+			}
 			break;
 		}
 		send_size -= ret;
