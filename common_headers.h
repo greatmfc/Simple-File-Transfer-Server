@@ -12,9 +12,8 @@
 #include <iostream>
 
 #define DEFAULT_PORT 9007
-#define IOV_NUM 1
 #define LAST_MODIFY 20230111L
-#define VERSION 1.0.0.1
+#define VERSION "1.0.0.2"
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \
@@ -31,8 +30,6 @@ The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
 #define BUFFER_SIZE 64
-#define BACKLOG 1024
-#define IOURING_QUEUE_DEPTH 512
 #define EPOLL_EVENT_NUMBER 1024
 #define ALARM_TIME 300
 
