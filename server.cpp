@@ -39,19 +39,18 @@ void receive_loop::loop()
 {
 	running = true;
 	int ret=listen(socket_fd, 5);
-	assert(ret >= 0);
+	if (ret < 0) {
+		LOG_ERROR("Error while listen to socket: ", strerror(errno));
+		exit(errno);
+	}
 	epoll_instance.add_fd_or_event_to_epoll(socket_fd,false,true,0);
 	epoll_instance.add_fd_or_event_to_epoll(pipe_fd[0], false, true, 0);
 	epoll_instance.set_fd_no_block(socket_fd);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
-#ifdef DEBUG
-	auto id = std::this_thread::get_id();
-	LOG_DEBUG("The id of main thread is: ", to_string(GETCURID(id)));
-#endif // DEBUG
-	thread_pool tp;
-	tp.init_pool();
+	//thread_pool tp;
+	//tp.init_pool();
 	while (running) {
 		int count = epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
@@ -81,6 +80,7 @@ void receive_loop::loop()
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
 					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
+					epoll_instance.set_fd_no_block(accepted_fd);
 					connection_storage[accepted_fd].address = addr;
 				}
 			}
@@ -88,9 +88,9 @@ void receive_loop::loop()
 			#ifdef DEBUG
 				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
 			#endif // DEBUG
-				//LOG_INFO("Closed by: ",ADDRSTR(connection_storage[react_fd].address.sin_addr));
-				LOG_CLOSE(connection_storage[react_fd].address);
-				epoll_instance.remove_fd_from_epoll(react_fd);
+				LOG_INFO("Disconnect from client: ",ADDRSTR(connection_storage[react_fd].address));
+				//LOG_CLOSE(connection_storage[react_fd].address);
+				//epoll_instance.remove_fd_from_epoll(react_fd);
 				close_connection(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
@@ -98,7 +98,6 @@ void receive_loop::loop()
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
 				if (signal == '1') break;
 				LOG_INFO("Tick.");
-				//LOG_VOID("Alarm.");
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
@@ -109,13 +108,16 @@ void receive_loop::loop()
 					deal_with_file(react_fd);
 					break;
 				case MESSAGE_TYPE:
-					tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
+					//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
+					deal_with_mesg(react_fd);
 					break;
 				case GPS_TYPE:
-					tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
+					//tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
+					deal_with_gps(react_fd);
 					break;
 				case GET_TYPE:
-					tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
+					//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
+					deal_with_get_file(react_fd);
 					break;
 				default:
 					LOG_INFO(
@@ -123,19 +125,21 @@ void receive_loop::loop()
 						ADDRSTR(connection_storage[react_fd].address),
 						" Received unknown request: ",
 						connection_storage[react_fd].buffer_for_pre_messsage);
-					//LOG_CLOSE(connection_storage[react_fd].address);
-					epoll_instance.remove_fd_from_epoll(react_fd);
+					//epoll_instance.remove_fd_from_epoll(react_fd);
 					close_connection(react_fd);
+					connection_storage[react_fd].buffer_for_pre_messsage.clear();
+					/*
 					memset(
 						connection_storage[react_fd].buffer_for_pre_messsage,
 						0,
 						BUFFER_SIZE);
+					*/
 					break;
 				}
 			}
 		}
 	}
-	tp.shutdown_pool();
+	//tp.shutdown_pool();
 	for (auto& [addr, stream] : addr_to_stream) {
 		if (stream != nullptr) {
 			delete stream;
@@ -148,7 +152,13 @@ void receive_loop::loop()
 int receive_loop::decide_action(int fd)
 {
 	ssize_t ret = 0;
-	ret = read(fd, connection_storage[fd].buffer_for_pre_messsage, BUFFER_SIZE);
+	char buffer[256]{ 0 };
+	while (true) {
+		ret = read(fd, buffer, 256);
+		if (ret <= 0) break;
+		connection_storage[fd].buffer_for_pre_messsage += buffer;
+		memset(buffer, 0, 256);
+	}
 	if (ret < 0 && errno != EAGAIN) {
 		LOG_ERROR_C(connection_storage[fd].address);
 #ifdef DEBUG
@@ -159,6 +169,9 @@ int receive_loop::decide_action(int fd)
 #ifdef DEBUG
 	cout << "Read msg from client: " << connection_storage[fd].buffer_for_pre_messsage << endl;
 #endif // DEBUG
+	if (connection_storage[fd].buffer_for_pre_messsage.back() != '\n') {
+		connection_storage[fd].buffer_for_pre_messsage.push_back('\n');
+	}
 	switch (connection_storage[fd].buffer_for_pre_messsage[0])
 	{
 	case 'f':return FILE_TYPE;
@@ -171,14 +184,10 @@ int receive_loop::decide_action(int fd)
 
 void receive_loop::deal_with_file(int fd)
 {
-#ifdef DEBUG
-	auto id = std::this_thread::get_id();
-	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
-#endif // DEBUG
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
 	char full_path[64]="./";
-	char* msg = connection_storage[fd].buffer_for_pre_messsage;
+	const char* msg = connection_storage[fd].buffer_for_pre_messsage.c_str();
 	msg += 2;
 	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', msg);
 	ssize_t size = atoi(strchr(msg, '/')+1);
@@ -191,14 +200,27 @@ void receive_loop::deal_with_file(int fd)
 	while (size)
 	{
 		ret=read(fd, buf, size);
-		if (ret < 0)
+		if (ret <= 0)
 		{
-			LOG_ERROR_C(connection_storage[fd].address);
-			perror("Receieve failed");
-			exit(1);
+			if (errno == EAGAIN) continue;
+			if (ret == 0) {
+				close_connection(fd);
+			}
+			else {
+				LOG_ERROR_C(connection_storage[fd].address);
+				LOG_CLOSE(connection_storage[fd].address);
+			#ifdef DEBUG
+				perror("Receieve failed");
+			#endif // DEBUG
+			}
+			break;
 		}
 		size -= ret;
 		buf += ret;
+	#ifdef DEBUG
+		progress_bar((float)(connection_storage[fd].bytes_to_deal_with - size),
+			(float)connection_storage[fd].bytes_to_deal_with);
+	#endif // DEBUG
 	}
 	//di->fd = write_fd;
 	buf = connection_storage[fd].buf;
@@ -211,7 +233,8 @@ void receive_loop::deal_with_file(int fd)
 #ifdef DEBUG
 			perror("Server write to local failed");
 #endif // DEBUG
-			exit(1);
+			break;
+			//exit(1);
 		}
 		connection_storage[fd].bytes_to_deal_with -= ret;
 		connection_storage[fd].buf += ret;
@@ -220,76 +243,78 @@ void receive_loop::deal_with_file(int fd)
 		}
 	}
 #ifdef DEBUG
-	cout << "Success on receiving file: " << msg << endl;
+	cout << "\nSuccess on receiving file: " << msg;
 #endif // DEBUG
 	//LOG_FILE(connection_storage[fd].address, move(msg));
 	delete buf;
-	close(write_fd);
-	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	//close(write_fd);
+	connection_storage[fd].buffer_for_pre_messsage.clear();
+	//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_mesg(int fd)
 {
-#ifdef DEBUG
-	auto id = std::this_thread::get_id();
-	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
-#endif // DEBUG
-	char* pt = connection_storage[fd].buffer_for_pre_messsage;
+	/*
+	const char* pt = connection_storage[fd].buffer_for_pre_messsage.c_str();
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
+	*/
 	char code = '1';
 	write(fd, &code, sizeof code);
-	LOG_MSG(connection_storage[fd].address, move(buffer));
+	LOG_MSG(connection_storage[fd].address, &connection_storage[fd].buffer_for_pre_messsage[2]);
 #ifdef DEBUG
-	cout << "Success on receiving message: " << buffer;
+	cout << "Success on receiving message: " << &connection_storage[fd].buffer_for_pre_messsage[2];
 #endif // DEBUG
-	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	connection_storage[fd].buffer_for_pre_messsage.clear();
+	//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_gps(int fd)
 {
-#ifdef DEBUG
-	auto id = std::this_thread::get_id();
-	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
-#endif // DEBUG
 	char file_name[32] = "gps_";
 	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
 	strcat(file_name, inet_ntoa(tmp_addr));
 	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
 		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);
 		if (addr_to_stream[tmp_addr.s_addr]->fail()) {
-			LOG_ERROR_C(connection_storage[fd].address);
-			cout << "Open gps file failed\n";
-			exit(1);
+			//LOG_ERROR_C(connection_storage[fd].address);
+			//cout << "Open gps file failed\n";
+			//epoll_instance.remove_fd_from_epoll(fd);
+			LOG_ERROR("Error while creating gps file.");
+			LOG_CLOSE(connection_storage[fd].address);
+			close_connection(fd);
+			return;
+			//exit(1);
 		}
 	}
-	char* pt = connection_storage[fd].buffer_for_pre_messsage;
+	/*
+	auto pt = connection_storage[fd].buffer_for_pre_messsage.c_str();
 	while (*pt == ' ') ++pt;
 	char buffer[128]{ 0 };
 	strcpy(buffer, pt+2);
 	strcat(buffer, "\n");
-	*addr_to_stream[tmp_addr.s_addr] << buffer;
+	*/
+	*addr_to_stream[tmp_addr.s_addr] << connection_storage[fd].buffer_for_pre_messsage.substr(2);
 	addr_to_stream[tmp_addr.s_addr]->flush();
 	LOG_MSG(connection_storage[fd].address, "GPS content");
 #ifdef DEBUG
-	cout << "Success on receiving GPS: " << buffer;
+	cout << "Success on receiving GPS: " << &connection_storage[fd].buffer_for_pre_messsage[2];
+	cout.flush();
 #endif // DEBUG
-	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	connection_storage[fd].buffer_for_pre_messsage.clear();
+	//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 
 void receive_loop::deal_with_get_file(int fd)
 {
-#ifdef DEBUG
-	auto id = std::this_thread::get_id();
-	LOG_DEBUG("GPS is handled by thread: ", to_string(GETCURID(id)));
-#endif // DEBUG
 	//char* tmp_pt = &connection_storage[fd].buffer_for_pre_messsage[2];
 	LOG_INFO("Receive file request from:",
 		ADDRSTR(connection_storage[fd].address), ' ',
 		&connection_storage[fd].buffer_for_pre_messsage[2]);
 	string full_path("./");
 	full_path += &connection_storage[fd].buffer_for_pre_messsage[2];
+	if (full_path.back() == '\n') full_path.pop_back();
 	//char full_path[BUFFER_SIZE+2] = "./";
 	//strncat(full_path, tmp_pt, BUFFER_SIZE);
 	struct stat st;
@@ -298,7 +323,8 @@ void receive_loop::deal_with_get_file(int fd)
 		LOG_ERROR("No access to request file or it's not regular file.");
 		//LOG_FILE(connection_storage[fd].address,
 		//	"No access to request file or it's not regular file.");
-		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		connection_storage[fd].buffer_for_pre_messsage.clear();
+		//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 		char code = '0';
 		write(fd, &code, sizeof code);
 		return;
@@ -307,9 +333,16 @@ void receive_loop::deal_with_get_file(int fd)
 
 	int file_fd = open(full_path.c_str(), O_RDONLY);
 	if (file_fd < 0) {
-		perror("Open file failed");
-		close(fd);
-		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		LOG_ERROR("Open requested file fail: ", strerror(errno));
+		//perror("Open file failed");
+		//close(fd);
+		char code = '0';
+		write(fd, &code, sizeof code);
+		//close_connection(fd);
+		//LOG_CLOSE(connection_storage[fd].address);
+		//epoll_instance.remove_fd_from_epoll(fd);
+		connection_storage[fd].buffer_for_pre_messsage.clear();
+		//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 		return;
 	}
 	fstat(file_fd, &st);
@@ -321,40 +354,53 @@ void receive_loop::deal_with_get_file(int fd)
 	write(fd, react_msg.c_str(), react_msg.size());
 	ssize_t ret = 0;
 	char flag = '0';
-	ret = recv(fd, &flag, sizeof(flag), 0);
+	while (1) {
+		ret = recv(fd, &flag, sizeof(flag), 0);
+		if (ret > 0 || errno != EAGAIN) break;
+	}
 	if (flag != '1' || ret <= 0) {
 #ifdef DEBUG
-		cout << "Receive flag from server failed.\n";
+		cout << "Receive flag from server failed.\nIn line: ";
 		cout << __LINE__ << endl;
 #endif // DEBUG
 		LOG_ERROR_C(connection_storage[fd].address);
 		LOG_CLOSE(connection_storage[fd].address);
-		epoll_instance.remove_fd_from_epoll(fd);
-		close(fd);
-		memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+		//epoll_instance.remove_fd_from_epoll(fd);
+		close_connection(fd);
+		//close(fd);
+		connection_storage[fd].buffer_for_pre_messsage.clear();
+		//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
 		return;
 	}
 	off_t off = 0;
 	long send_size = st.st_size;
 	while (send_size > 0) {
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
-		if(ret < 0)
+		if (ret <= 0 && errno != EAGAIN)
 		{
 			LOG_ERROR_C(connection_storage[fd].address);
+			//epoll_instance.remove_fd_from_epoll(fd);
+			LOG_CLOSE(connection_storage[fd].address);
+			close_connection(fd);
 		#ifdef DEBUG
 			perror("Sendfile failed");
 		#endif // DEBUG
 			break;
 		}
-	#ifdef DEBUG
-		cout << "have send :" << ret << endl;
-	#endif // DEBUG
 		send_size -= ret;
+	#ifdef DEBUG
+		progress_bar((float)(st.st_size - send_size), (float)st.st_size);
+		//cout << "\nhave send :" << ret << endl;
+	#endif // DEBUG
 	}
+#ifdef DEBUG
+	cout << "\n";
+#endif // DEBUG
 	//LOG_FILE(connection_storage[fd].address, full_path);
-	LOG_INFO("Success on receiving file from client:", ADDRSTR(connection_storage[fd].address));
-	memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
-	close(file_fd);
+	LOG_INFO("Success on sending file to client:", ADDRSTR(connection_storage[fd].address));
+	connection_storage[fd].buffer_for_pre_messsage.clear();
+	//memset(connection_storage[fd].buffer_for_pre_messsage, 0, BUFFER_SIZE);
+	//close(file_fd);
 }
 
 void receive_loop::close_connection(int fd)
@@ -367,19 +413,7 @@ void receive_loop::close_connection(int fd)
 		delete addr_to_stream[tmp_addr.s_addr];
 		addr_to_stream[tmp_addr.s_addr] = nullptr;
 	}
-}
-
-int receive_loop::get_prefix(int fd)
-{
-	for (auto& charc : connection_storage[fd].buffer_for_pre_messsage) {
-		switch (charc)
-		{
-		case 'f':return FILE_TYPE;
-		case 'g':return GPS_TYPE;
-		default:charc = ' ';
-		}
-	}
-	return MESSAGE_TYPE;
+	epoll_instance.remove_fd_from_epoll(fd);
 }
 
 void receive_loop::alarm_handler(int)

@@ -9,11 +9,27 @@
 #include <functional>
 #include <netinet/in.h>
 #include <sys/epoll.h>
+#include <iostream>
 
 #define DEFAULT_PORT 9007
 #define IOV_NUM 1
-#define LAST_MODIFY 20230108L
-#define VERSION 1.0
+#define LAST_MODIFY 20230111L
+#define VERSION 1.001
+/*
+The first number specifies a major-version which will lead to \
+	structure and interface changes and might not be compatible \
+	with previous versions.
+
+The second number specifies a minor-version which will lead to \
+	function changes such as adding additional functions or \
+	changing the behavior of a certain function.
+This won't change the backward compatibility.
+
+The third number specifies a bug-fix-version which fix potential bugs in program.
+
+The forth number specifies a testing-version when it is '1', \
+	a release-version when it is '2'.
+*/
 #define BUFFER_SIZE 64
 #define BACKLOG 1024
 #define IOURING_QUEUE_DEPTH 512
@@ -39,6 +55,7 @@ using std::make_shared;
 using std::packaged_task;
 using std::bind;
 using std::string;
+using std::array;
 
 enum MyEnum
 {
@@ -75,7 +92,7 @@ typedef struct data_info
 	int reserved_var[8];
 	ssize_t bytes_to_deal_with;
 	char* buf;
-	char buffer_for_pre_messsage[BUFFER_SIZE];
+	string buffer_for_pre_messsage;
 	struct iovec iov;
 	sockaddr_in address;
 } data_info;
@@ -169,12 +186,17 @@ public:
 	~log();
 
 	template<typename ...Args>
-	void process_and_submit(log_enum&& type, const Args& ...args) {
+	void process_and_submit(log_enum type, const Args& ...args) {
 		timespec_get(&ts, TIME_UTC);
 		char tmp[32]{ 0 };
-		strftime(tmp, 32, "%F %T.", localtime(&ts.tv_sec));
+		auto currentTime = localtime(&ts.tv_sec);
+		if (day != currentTime->tm_mday) {
+			log_file.close();
+			init_log();
+		}
+		strftime(tmp, 32, "%F %T.", currentTime);
 		string content(tmp);
-		content += std::to_string(ts.tv_nsec);
+		content += std::to_string(ts.tv_nsec).substr(0,6);
 		switch (type)
 		{
 		case LINFO:content += " [Info]:"; break;
@@ -183,7 +205,9 @@ public:
 		case LERROR:content += " [Error]:"; break;
 		}
 		content = (content + ... + args);
-		content += '\n';
+		if (content.back() != '\n') {
+			content += '\n';
+		}
 		m_submit_missions(content);
 	}
 
@@ -199,6 +223,7 @@ public:
 private:
 	log();
 	timespec ts;
+	int day = 0;
 	ofstream log_file;
 	bool keep_log = true;
 	char log_name[64] = { 0 };
@@ -308,6 +333,30 @@ private:
 
 };
 
+constexpr array<string_view, 11> all_percent = {
+	"\r[----------]",
+	"\r[*---------]",
+	"\r[**--------]",
+	"\r[***-------]",
+	"\r[****------]",
+	"\r[*****-----]",
+	"\r[******----]",
+	"\r[*******---]",
+	"\r[********--]",
+	"\r[*********-]",
+	"\r[**********]",
+};
+inline bool progress_bar(float num1, float num2) {
+	float percent = num1 / num2;
+	if (percent > 1 || percent <= 0) {
+		throw std::invalid_argument("Wrong percent");
+	}
+	int index = int(percent * 10);
+	std::cout << all_percent[index] << ' ' << std::to_string(percent * 100) << '%';
+	std::cout.flush();
+	return true;
+}
+
 #define GETCURID(_id) *(thread::native_handle_type*)&id
 #define ADDRSTR(_addr) inet_ntoa(_addr.sin_addr)
 #define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
@@ -319,7 +368,7 @@ private:
 #define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",ADDRSTR(_addr),' ',_msg)
 #define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",ADDRSTR(_addr),' ',_msg)
 #define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",ADDRSTR(_addr))
-#define LOG_CLOSE(_addr) LOG_INFO("Close by:",ADDRSTR(_addr))
+#define LOG_CLOSE(_addr) LOG_INFO("Closing :",ADDRSTR(_addr))
 #define LOG_ERROR_C(_addr) LOG_ERROR("client:",ADDRSTR(_addr),' ',strerror(errno))
 
 #endif //CH_H

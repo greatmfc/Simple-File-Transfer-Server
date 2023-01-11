@@ -5,12 +5,11 @@ STDVER = -std=c++17
 DEBUGFLAGS = -g -DDEBUG
 
 WARMFLAGS = -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor \
-			-Wno-error=unused-variable -Wno-error=unused-parameter \
-			-Wno-error=stringop-overflow
+			-Wno-error=unused-variable -Wno-error=unused-parameter
 
 object = thread_pool.cpp epoll_utility.cpp log.cpp server.cpp client.cpp main.cpp
 
-output = sft
+output = sft.out
 
 LIB = -pthread
 
@@ -19,12 +18,12 @@ LIB = -pthread
 sft: $(object)
 	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -Ofast
 
-test: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test $(DEBUGFLAGS)
+testing: $(object)
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)
 
 install: $(output)
 	install -m 755 $(output) /usr/bin/
 
 clean:
-	rm -f sft test
+	rm -f sft.out test.out
 	rm -f /usr/bin/sft

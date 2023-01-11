@@ -1,158 +1,3 @@
-#ifdef ENABLE_MODULES
-module;
-#include <cstdio>
-#include <cstring>
-#include <cstdlib>
-#include <cassert>
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <sys/time.h>
-#include <unistd.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/sendfile.h>
-#include <exception>
-#include <iostream>
-#include <string_view>
-#include <thread>
-#include <sys/epoll.h>
-#include <fstream>
-#include <unordered_map>
-#include <functional>
-#include <future>
-#include <memory>
-
-#define DEFAULT_PORT 9007
-#define VERSION 1.730
-#define BUFFER_SIZE 128
-#define ALARM_TIME 300
-
-#define LOG_MSG(_addr,_msg) log::get_instance()->submit_missions(MESSAGE_TYPE,_addr,_msg)
-#define LOG_FILE(_addr,_msg) log::get_instance()->submit_missions(FILE_TYPE,_addr,_msg)
-#define LOG_ACCEPT(_addr) log::get_instance()->submit_missions(ACCEPT,_addr,"")
-#define LOG_CLOSE(_addr) log::get_instance()->submit_missions(CLOSE,_addr,"")
-#define LOG_ERROR(_addr) log::get_instance()->submit_missions(ERROR_TYPE,_addr,strerror(errno))
-#define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
-
-export module sft;
-import structs;
-import thpool;
-import epoll_util;
-import log;
-
-using std::cout;
-using std::endl;
-using std::invalid_argument;
-using std::to_string;
-using std::move;
-using std::forward;
-using std::exit;
-using std::thread;
-using std::string;
-using std::ios;
-using std::ofstream;
-using std::string_view;
-using std::runtime_error;
-using std::cerr;
-using std::unordered_map;
-using std::bind;
-using std::future;
-using std::make_shared;
-using std::function;
-using std::packaged_task;
-
-export{
-	class setup
-	{
-	public:
-		setup();
-		setup(char* ip_addr, int port);
-		~setup() = default;
-		int socket_fd;
-		struct sockaddr_in addr;
-
-	private:
-		unsigned long target_addr;
-		int write_to_sock;
-	};
-
-	class basic_action
-	{
-	protected:
-		basic_action() = default;
-		~basic_action() = default;
-		int socket_fd;
-		int status_code;
-		setup* pt;
-	};
-
-	class receive_loop : public basic_action
-	{
-	public:
-		receive_loop() = default;
-		receive_loop(setup& s);
-		~receive_loop() = default;
-		static void stop_loop();
-		void loop();
-
-	private:
-		struct sockaddr_in addr;
-		socklen_t len;
-		epoll_utility epoll_instance;
-		unordered_map<int, data_info> connection_storage;
-		unordered_map<unsigned int, ofstream*> addr_to_stream;
-		static inline bool running;
-		static inline int pipe_fd[2];
-
-		int decide_action(int fd);
-		void deal_with_file(int fd);
-		void deal_with_mesg(int fd);
-		void deal_with_gps(int fd);
-		void deal_with_get_file(int fd);
-		void close_connection(int fd);
-		int get_prefix(int fd);
-		static void alarm_handler(int sig);
-	};
-
-	class send_file : public basic_action
-	{
-	public:
-		send_file() = default;
-		send_file(setup& s, char*& path);
-		~send_file() = default;
-		void write_to();
-
-	private:
-		char* file_path;
-	};
-
-	class send_msg : public basic_action
-	{
-	public:
-		send_msg() = default;
-		send_msg(setup& s, char*& msg);
-		void write_to();
-		~send_msg() = default;
-	private:
-		char* msg;
-	};
-
-	class get_file : public basic_action
-	{
-	public:
-		get_file() = delete;
-		get_file(setup& s, string_view&& msg);
-		~get_file() = default;
-		void get_it();
-
-	private:
-		string_view file_name;
-
-	};
-}
-
-#else
 #include <cstring>
 #include <cassert>
 #include <fcntl.h>
@@ -168,7 +13,6 @@ using std::cerr;
 using std::endl;
 using std::to_string;
 using std::invalid_argument;
-#endif
 
 send_file::send_file(setup& s,const string& path)
 {
@@ -274,16 +118,14 @@ send_msg::send_msg(setup& s, const string_view& msg) : msg(msg)
 
 void send_msg::write_to()
 {
-	char pre_msg[128]{ 0 };
-	strcpy(pre_msg, "m/");
-	strcpy(pre_msg, msg.data());
-	write(socket_fd, pre_msg, strlen(pre_msg));
+	string data_msg = "m/";
+	data_msg += msg;
+	write(socket_fd, data_msg.c_str(), data_msg.length());
 	char code = '0';
 	read(socket_fd, &code, sizeof code);
-	if (code != '1') {
+	if (code != '1' && errno != 0) {
 		perror("Something wrong with the server");
 	}
-	//close(socket_fd);
 }
 
 get_file::get_file(setup& s, string_view&& msge) {
@@ -294,14 +136,13 @@ get_file::get_file(setup& s, string_view&& msge) {
 
 void get_file::get_it()
 {
-	char pre_msg[128]{ 0 };
-	strcpy(pre_msg, "g/");
-	strcat(pre_msg, file_name.data());
-	write(socket_fd, pre_msg, strlen(pre_msg));
+	string pre_msg="g/";
+	pre_msg += file_name;
+	write(socket_fd, pre_msg.c_str(), pre_msg.length());
 	//send a request first
 	data_info dis{};
-	memset(&dis, 0, sizeof dis);
-	ssize_t ret = read(socket_fd, dis.buffer_for_pre_messsage, sizeof dis.buffer_for_pre_messsage);
+	char tmp_buf[BUFFER_SIZE]{ 0 };
+	ssize_t ret = read(socket_fd, tmp_buf, BUFFER_SIZE);
 	if (ret <= 1) {
 		cerr<<"File might not be found in the server.\n";
 		exit(1);
@@ -311,7 +152,7 @@ void get_file::get_it()
 	//inform the server to send formal data
 
 	char full_path[64]="./";
-	char* msg = dis.buffer_for_pre_messsage;
+	const char* msg = tmp_buf;
 	ssize_t size = atoi(strchr(msg, '/')+1);
 	strncat(full_path, msg, strcspn(msg, "/"));
 	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -321,23 +162,22 @@ void get_file::get_it()
 	while (size)
 	{
 		ret=read(socket_fd, buf, size);
-		if (ret < 0)
+		if (ret <= 0)
 		{
-			//LOG_ERROR_C(dis.address);
 			perror("Receieve failed");
 			exit(1);
 		}
 		size -= ret;
+		progress_bar((float)(dis.bytes_to_deal_with - size), (float)dis.bytes_to_deal_with);
 		buf += ret;
 	}
-	//di->fd = write_fd;
+	cout << '\n';
 	buf = dis.buf;
 	for (;;) {
 		ret = write(write_fd, dis.buf, dis.bytes_to_deal_with);
 		if (ret < 0) {
-			//LOG_ERROR_C(dis.address);
 #ifdef DEBUG
-			perror("Server write to local failed");
+			perror("Server write to local storage failed");
 #endif // DEBUG
 			exit(1);
 		}
@@ -350,10 +190,6 @@ void get_file::get_it()
 #ifdef DEBUG
 	cout << "Success on getting file: " << msg << endl;
 #endif // DEBUG
-	//LOG_INFO("Fetching file from server:", ADDRSTR(dis.address), ' ', msg);
-	//LOG_FILE(dis.address, move(msg));
 	delete buf;
-	//close(write_fd);
-	memset(dis.buffer_for_pre_messsage, 0, BUFFER_SIZE);
 }
 

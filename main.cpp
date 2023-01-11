@@ -1,15 +1,3 @@
-#ifdef ENABLE_MODULES
-#include <csignal>
-#include <iostream>
-#include <getopt.h>
-#include <cstdio>
-#define LOG_VOID(_msg) log::get_instance()->submit_missions(_msg)
-using std::cout;
-using std::endl;
-import sft;
-import log;
-import structs;
-#else
 #include <csignal>
 #include <iostream>
 #include <getopt.h>
@@ -24,9 +12,9 @@ using std::endl;
 void usage() {
 	fprintf(stderr,
 		"server mode:"
-		"./sft [option]"
+		"./sft.out [option]"
 		"client mode:"
-		"./sft [option] [argument] ip:port\n"
+		"./sft.out [option] [argument] ip:port\n"
 		"options: \n"
 		"-c				Check mode for identification before receiving.\n"
 		"-f				File mode for sending file.Argument is your file's path.\n"
@@ -35,16 +23,16 @@ void usage() {
 		"-v				Display version.\n"
 		"-n				No log file left behind after finishing program.\n"
 		"-g				Fetch file from server.\n"
-		"Example:		./sft -f ./file 255.255.255.0:8888\n"
-		"				./sft -m hello,world! 255.255.255.0:8888\n"
-		"				./sft -g file_name 255.255.255.0:8888\n"
+		"Example:		./sft.out -f ./file 255.255.255.0:8888\n"
+		"				./sft.out -m hello,world! 255.255.255.0:8888\n"
+		"				./sft.out -g file_name 255.255.255.0:8888\n"
 	);
 	exit(2);
 }
 
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
-	cout << "Last modify time: " << LAST_MODIFY << endl;
+	cout << "Last modify day: " << LAST_MODIFY << endl;
 	exit(2);
 }
 
@@ -85,7 +73,6 @@ void parse_arg(char*& arg, char*& port, char*& ip) {
 	}
 	strncpy(ip, arg, sz);
 }
-#endif // __cplusplus > 201703L
 
 static void sigint_hanl(int sig) {
 #ifdef DEBUG
@@ -111,7 +98,9 @@ int main(int argc, char* argv[])
 	char* path = nullptr;
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
+#ifndef __aarch64__
 	locale::global(locale("en_US.UTF-8"));
+#endif // !__aarch64__
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{
