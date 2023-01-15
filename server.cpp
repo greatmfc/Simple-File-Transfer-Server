@@ -33,6 +33,10 @@ void receive_loop::stop_loop()
 	running = false;
 	char msg = '1';
 	send(pipe_fd[1], &msg, 1, 0);
+#ifdef DEBUG
+	LOG_INFO("Server quits.");
+	exit(0);
+#endif // DEBUG
 }
 
 void receive_loop::loop()
@@ -202,6 +206,7 @@ void receive_loop::deal_with_file(int fd)
 		ret=read(fd, buf, size);
 		if (ret <= 0)
 		{
+			if (ret == 0) break;
 			if (errno == EAGAIN) continue;
 			if (ret != 0) {
 				LOG_ERROR_C(connection_storage[fd].address);
@@ -243,6 +248,7 @@ void receive_loop::deal_with_file(int fd)
 	}
 #ifdef DEBUG
 	cout << "\nSuccess on receiving file: " << msg;
+	cout.flush();
 #endif // DEBUG
 	//LOG_FILE(connection_storage[fd].address, move(msg));
 	delete buf;
@@ -355,7 +361,7 @@ void receive_loop::deal_with_get_file(int fd)
 	char flag = '0';
 	while (1) {
 		ret = recv(fd, &flag, sizeof(flag), 0);
-		if (ret > 0 || errno != EAGAIN) break;
+		if (ret >= 0 || errno != EAGAIN) break;
 	}
 	if (flag != '1' || ret <= 0) {
 #ifdef DEBUG
@@ -396,7 +402,7 @@ void receive_loop::deal_with_get_file(int fd)
 	#endif // DEBUG
 	}
 #ifdef DEBUG
-	cout << "\n";
+	cout << "\nFinishing file sending.\n";
 #endif // DEBUG
 	//LOG_FILE(connection_storage[fd].address, full_path);
 	LOG_INFO("Success on sending file to client:", ADDRSTR(connection_storage[fd].address));
