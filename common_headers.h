@@ -12,8 +12,8 @@
 #include <iostream>
 
 #define DEFAULT_PORT 9007
-#define LAST_MODIFY 20230111L
-#define VERSION "1.0.1.2"
+#define LAST_MODIFY 20230116L
+#define VERSION "1.1.2.1"
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \
@@ -272,7 +272,7 @@ public:
 	receive_loop() = default;
 	receive_loop(setup& s);
 	~receive_loop() = default;
-	static void stop_loop();
+	static void stop_loop(int sig);
 	void loop();
 
 private:

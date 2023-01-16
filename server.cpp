@@ -28,14 +28,14 @@ receive_loop::receive_loop(setup& s)
 	}
 }
 
-void receive_loop::stop_loop()
+void receive_loop::stop_loop(int sig)
 {
 	running = false;
-	char msg = '1';
-	send(pipe_fd[1], &msg, 1, 0);
+	//char msg = '0'+sig;
+	send(pipe_fd[1], &sig, 1, 0);
 #ifdef DEBUG
-	LOG_INFO("Server quits.");
-	exit(0);
+	//LOG_INFO("Server quits.");
+	//exit(0);
 #endif // DEBUG
 }
 
@@ -98,9 +98,10 @@ void receive_loop::loop()
 				close_connection(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
-				char signal='2';
+				//char signal='2';
+				int signal = 0;
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
-				if (signal == '1') break;
+				if (signal != SIGALRM) break;
 				LOG_INFO("Tick.");
 				alarm(ALARM_TIME);
 			}
@@ -424,11 +425,11 @@ void receive_loop::close_connection(int fd)
 	epoll_instance.remove_fd_from_epoll(fd);
 }
 
-void receive_loop::alarm_handler(int)
+void receive_loop::alarm_handler(int sig)
 {
 	int save_errno = errno;
-	char msg = '0';
-	send(pipe_fd[1], &msg, 1, 0);
+	//char msg = '0';
+	send(pipe_fd[1], &sig, 1, 0);
 	errno = save_errno;
 }
 

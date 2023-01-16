@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <locale>
+#include <csignal>
 #include "common_headers.h"
 using std::locale;
 using std::cout;
@@ -74,20 +75,22 @@ void parse_arg(char*& arg, char*& port, char*& ip) {
 	strncpy(ip, arg, sz);
 }
 
-static void sigint_hanl(int sig) {
+static void sig_hanl(int sig) {
+	LOG_WARN("Receive ", strsignal(sig), ".");
+#ifdef DEBUG
+	cout << "\rReceived signal " << strsignal(sig) << endl;
+#endif // DEBUG
+	if (sig == SIGPIPE) return;
 #ifdef DEBUG
 	cout << "\rShutting down..." << endl;
 #endif // DEBUG
-	if (sig == SIGINT) {
-		LOG_WARN("Receive SIGINT.");
+	receive_loop::stop_loop(sig);
+}
+
+static void register_signal(const vector<int>& sigs) {
+	for (auto& sig : sigs) {
+		signal(sig, sig_hanl);
 	}
-	else if(sig == SIGSEGV) {
-		LOG_WARN("Receive SIGSEGV.");
-	}
-	else if (sig == SIGTERM) {
-		LOG_WARN("Receive SIGTERM.");
-	}
-	receive_loop::stop_loop();
 }
 
 int main(int argc, char* argv[])
@@ -98,6 +101,7 @@ int main(int argc, char* argv[])
 	char* path = nullptr;
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
+	static vector<int> sig_to_register = { SIGINT,SIGSEGV,SIGTERM,SIGPIPE };
 #ifndef __aarch64__
 	locale::global(locale("en_US.UTF-8"));
 #endif // !__aarch64__
@@ -147,10 +151,13 @@ int main(int argc, char* argv[])
 	if (argc <= 2) {
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
-		signal(SIGINT, sigint_hanl);
-		signal(SIGSEGV, sigint_hanl);
-		signal(SIGTERM, sigint_hanl);
-		signal(SIGFPE, sigint_hanl);
+		register_signal(sig_to_register);
+		/*
+		signal(SIGINT, sig_hanl);
+		signal(SIGSEGV, sig_hanl);
+		signal(SIGTERM, sig_hanl);
+		signal(SIGFPE, sig_hanl);
+		*/
 		setup st;
 		receive_loop rl(st);
 		rl.loop();
