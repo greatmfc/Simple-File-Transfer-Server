@@ -244,7 +244,6 @@ namespace mfcslib {
 			if (ip_port.sin_addr.s_addr == INADDR_NONE) {
 				throw std::invalid_argument("Invalid address:");
 			}
-			//memcpy(&ip_port.sin_addr, &target_addr, sizeof(target_addr));
 			ip_port.sin_port = htons(port);
 			_fd = socket(AF_INET, SOCK_STREAM, 0);
 			int ret = connect(_fd, (struct sockaddr*)&ip_port, sizeof(ip_port));

@@ -142,12 +142,6 @@ int main(int argc, char* argv[])
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
 		register_signal(sig_to_register);
-		/*
-		signal(SIGINT, sig_hanl);
-		signal(SIGSEGV, sig_hanl);
-		signal(SIGTERM, sig_hanl);
-		signal(SIGFPE, sig_hanl);
-		*/
 		setup st;
 		receive_loop rl(st);
 		rl.loop();
@@ -156,30 +150,17 @@ int main(int argc, char* argv[])
 		string ip;
 		uint16_t port = 0;
 		parse_arg(argv[optind], ip, port);
-		//setup st(ip, atoi(port));
 		mfcslib::Socket server(ip, port);
 		if (path != nullptr) {
 			check_file(path);
 			mfcslib::File file(path, false, 0);
 			send_file_to(server, file);
-			/*
-			send_file sf(st, path);
-			sf.write_to();
-			*/
 		}
 		else if (mesg != nullptr) {
 			send_msg_to(server, mesg);
-			/*
-			send_msg sm(st, mesg);
-			sm.write_to();
-			*/
 		}
 		else if(file_to_get!=nullptr){
 			get_file_from(server, file_to_get);
-			/*
-			get_file gf(st, file_to_get);
-			gf.get_it();
-			*/
 		}
 	}
 	cout << "Success on dealing. Please check the server." << endl;
