@@ -55,24 +55,14 @@ void check_file(char*& path) {
 	}
 }
 
-void parse_arg(char*& arg, char*& port, char*& ip) {
-	ip = new char[16];
-	port = new char[8];
-	memset(ip, 0, 16);
-	memset(port, 0, 8);
-	char* tmp = strchr(arg, ':');
-	if (tmp == NULL) {
+void parse_arg(const string_view& arg, string& ip, uint16_t& port) {
+	auto idx = arg.find(':');
+	if (idx == -1) {
 		fprintf(stderr, "Fail to locate port number.\n");
 		exit(1);
 	}
-	tmp += 1;
-	strcpy(port, tmp);
-	size_t sz = strcspn(arg, ":");
-	if (ip == nullptr) {
-		perror("Failed to allocate memory");
-		exit(1);
-	}
-	strncpy(ip, arg, sz);
+	ip = arg.substr(0, idx);
+	port = (uint16_t)atoi(arg.substr(idx + 1).data());
 }
 
 static void sig_hanl(int sig) {
@@ -163,24 +153,34 @@ int main(int argc, char* argv[])
 		rl.loop();
 	}
 	else{
-		char* ip, * port;
-		parse_arg(argv[optind], port, ip);
-		setup st(ip, atoi(port));
+		string ip;
+		uint16_t port = 0;
+		parse_arg(argv[optind], ip, port);
+		//setup st(ip, atoi(port));
+		mfcslib::Socket server(ip, port);
 		if (path != nullptr) {
 			check_file(path);
+			mfcslib::File file(path, false, 0);
+			send_file_to(server, file);
+			/*
 			send_file sf(st, path);
 			sf.write_to();
+			*/
 		}
 		else if (mesg != nullptr) {
+			send_msg_to(server, mesg);
+			/*
 			send_msg sm(st, mesg);
 			sm.write_to();
+			*/
 		}
 		else if(file_to_get!=nullptr){
+			get_file_from(server, file_to_get);
+			/*
 			get_file gf(st, file_to_get);
 			gf.get_it();
+			*/
 		}
-		delete ip;
-		delete port;
 	}
 	cout << "Success on dealing. Please check the server." << endl;
 	return 0;
