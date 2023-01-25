@@ -142,8 +142,7 @@ int main(int argc, char* argv[])
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
 		register_signal(sig_to_register);
-		setup st;
-		receive_loop rl(st);
+		receive_loop rl;
 		rl.loop();
 	}
 	else{

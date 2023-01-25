@@ -16,6 +16,7 @@ using std::to_string;
 using std::invalid_argument;
 using namespace mfcslib;
 
+/*
 send_file::send_file(setup& s,const string& path)
 {
 	pt = &s;
@@ -197,6 +198,7 @@ void get_file::get_it()
 #endif // DEBUG
 	delete buf;
 }
+*/
 
 void send_msg_to(mfcslib::Socket& target, const string_view& msg) {
 	string request("m/");

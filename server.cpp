@@ -17,38 +17,37 @@ using std::endl;
 using std::to_string;
 using std::ios;
 
-receive_loop::receive_loop(setup& s)
-{
-	pt = &s;
-	len = sizeof(addr);
-	socket_fd = pt->socket_fd;
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, pipe_fd) < 0) {
-		LOG_ERROR_C(pt->addr);
-		exit(1);
-	}
-}
-
 void receive_loop::stop_loop(int sig)
 {
 	running = false;
 	send(pipe_fd[1], &sig, 1, 0);
-#ifdef DEBUG
 	LOG_INFO("Server quits.");
 	exit(0);
-#endif // DEBUG
 }
 
 void receive_loop::loop()
 {
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, pipe_fd) < 0) {
+		string error_msg("Error in creating socket pair: ");
+		error_msg += GETERR;
+		throw runtime_error(error_msg);
+	}
+	mfcslib::ServerSocket localserver(DEFAULT_PORT);
 	running = true;
+	/*
 	int ret=listen(socket_fd, 5);
 	if (ret < 0) {
 		LOG_ERROR("Error while listen to socket: ", strerror(errno));
 		exit(errno);
 	}
-	epoll_instance.add_fd_or_event_to_epoll(socket_fd,false,true,0);
+	*/
+	sockaddr_in addr{ {0} };
+	socklen_t len = sizeof addr;
+	int socket_fd = localserver.get_fd();
+	localserver.set_nonblocking();
+	epoll_instance.add_fd_or_event_to_epoll(socket_fd, false, true, 0);
 	epoll_instance.add_fd_or_event_to_epoll(pipe_fd[0], false, true, 0);
-	epoll_instance.set_fd_no_block(socket_fd);
+	//epoll_instance.set_fd_no_block(socket_fd);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
@@ -57,10 +56,12 @@ void receive_loop::loop()
 	while (running) {
 		int count = epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
-			LOG_ERROR_C(pt->addr);
-			perror("Error epoll_wait");
-			exit(1);
+			//LOG_ERROR_C(pt->addr);
+			//perror("Error epoll_wait");
+			//exit(1);
+			LOG_ERROR("Error in epoll_wait: ", strerror(errno));
 		}
+		else continue;
 		for (int i = 0; i < count; ++i) {
 			int react_fd = epoll_instance.events[i].data.fd;
 
@@ -102,7 +103,7 @@ void receive_loop::loop()
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				status_code = decide_action(react_fd);
+				auto status_code = decide_action(react_fd);
 				switch (status_code)
 				{
 				case FILE_TYPE:
@@ -180,16 +181,57 @@ void receive_loop::deal_with_file(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
-	char full_path[64]="./";
-	const char* msg = connection_storage[fd].buffer_for_pre_messsage.c_str();
-	msg += 2;
-	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', msg);
-	ssize_t size = atoi(strchr(msg, '/')+1);
-	strncat(full_path, msg, strcspn(msg, "/"));
-	int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	connection_storage[fd].bytes_to_deal_with = size;
-	connection_storage[fd].buf = new char[size];
-	char* buf = connection_storage[fd].buf;
+	//char full_path[64]="./";
+	auto name_size = connection_storage[fd].buffer_for_pre_messsage.substr(2);
+	//msg += 2;
+	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', name_size);
+	auto idx = name_size.find('/');
+	auto size = std::stoull(name_size.substr(idx + 1));
+	auto name = "./" + name_size.substr(0, idx);
+	//strncat(full_path, msg, strcspn(msg, "/"));
+	//int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	mfcslib::File output_file(name, true, O_WRONLY);
+	//connection_storage[fd].bytes_to_deal_with = size;
+	//connection_storage[fd].buf = new char[size];
+	//char* buf = connection_storage[fd].buf;
+	if (size < MAXARRSZ) {
+		auto bufferForFile = mfcslib::make_array<Byte>(size);
+		auto ret = 0ull;
+		auto bytesLeft = size;
+		while (true) {
+			ret += bufferForFile.read(fd, ret, bytesLeft);
+			bytesLeft = size - ret;
+		#ifdef DEBUG
+			progress_bar(ret, size);
+		#endif // DEBUG
+			if (bytesLeft <= 0) break;
+		}
+		output_file.write(bufferForFile);
+	}
+	else {
+		auto bufferForFile = mfcslib::make_array<Byte>(MAXARRSZ);
+		auto ret = 0ull;
+		auto bytesWritten = ret;
+		while (true) {
+			auto currentReturn = 0;
+			while (ret < (MAXARRSZ - 200'000)) {
+				currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
+				if (currentReturn <= 0) break;
+				ret += currentReturn;
+				if (ret + bytesWritten >= size) break;
+			}
+			if (currentReturn <= 0) break;
+			output_file.write(bufferForFile, 0, ret);
+			bytesWritten += ret;
+		#ifdef DEBUG
+			progress_bar(bytesWritten, size);
+		#endif // DEBUG
+			if (bytesWritten >= size) break;
+			bufferForFile.empty_array();
+			ret = 0;
+		}
+	}
+	/*
 	ssize_t ret = 0;
 	while (size)
 	{
@@ -234,11 +276,12 @@ void receive_loop::deal_with_file(int fd)
 			break;
 		}
 	}
+	*/
 #ifdef DEBUG
-	cout << "\nSuccess on receiving file: " << msg;
+	cout << "\nSuccess on receiving file: " << name_size;
 	cout.flush();
 #endif // DEBUG
-	delete buf;
+	//delete buf;
 	connection_storage[fd].buffer_for_pre_messsage.clear();
 }
 
@@ -265,7 +308,6 @@ void receive_loop::deal_with_gps(int fd)
 			LOG_CLOSE(connection_storage[fd].address);
 			close_connection(fd);
 			return;
-			//exit(1);
 		}
 	}
 	*addr_to_stream[tmp_addr.s_addr] << connection_storage[fd].buffer_for_pre_messsage.substr(2);

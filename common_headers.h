@@ -29,11 +29,12 @@ The third number specifies a bug-fix-version which fix potential bugs in program
 The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
-#define VERSION "1.2.2.1"
+#define VERSION "1.3.2.1"
 #define BUFFER_SIZE 64
 #define EPOLL_EVENT_NUMBER 32
 #define ALARM_TIME 300
 #define MAXARRSZ 1024'000'000
+#define GETERR strerror(errno)
 
 using std::mutex;
 using std::queue;
@@ -244,7 +245,7 @@ private:
 	int epoll_fd;
 };
 
-//[[deprecated]]
+/*
 class setup
 {
 public:
@@ -268,38 +269,6 @@ protected:
 	int status_code;
 	setup* pt;
 };
-
-class receive_loop : public basic_action
-{
-public:
-	receive_loop() = default;
-	receive_loop(setup& s);
-	~receive_loop() = default;
-	static void stop_loop(int sig);
-	void loop();
-
-private:
-	struct sockaddr_in addr;
-	socklen_t len;
-	epoll_utility epoll_instance;
-	unordered_map<int, data_info> connection_storage;
-	unordered_map<unsigned int, ofstream*> addr_to_stream;
-	static inline bool running;
-	static inline int pipe_fd[2];
-
-	int decide_action(int fd);
-	void deal_with_file(int fd);
-	void deal_with_mesg(int fd);
-	void deal_with_gps(int fd);
-	void deal_with_get_file(int fd);
-	void close_connection(int fd);
-	static void alarm_handler(int sig);
-};
-
-void send_msg_to(mfcslib::Socket& tartget, const string_view& msg);
-void send_file_to(mfcslib::Socket& target, mfcslib::File& file);
-void get_file_from(mfcslib::Socket& tartget, const string& file);
-
 class send_file : public basic_action
 {
 public:
@@ -335,6 +304,38 @@ private:
 	string_view file_name;
 
 };
+
+*/
+
+class receive_loop
+{
+public:
+	receive_loop() = default;
+	~receive_loop() = default;
+	static void stop_loop(int sig);
+	void loop();
+
+private:
+	//struct sockaddr_in addr;
+	//socklen_t len;
+	epoll_utility epoll_instance;
+	unordered_map<int, data_info> connection_storage;
+	unordered_map<unsigned int, ofstream*> addr_to_stream;
+	static inline bool running;
+	static inline int pipe_fd[2];
+
+	int decide_action(int fd);
+	void deal_with_file(int fd);
+	void deal_with_mesg(int fd);
+	void deal_with_gps(int fd);
+	void deal_with_get_file(int fd);
+	void close_connection(int fd);
+	static void alarm_handler(int sig);
+};
+
+void send_msg_to(mfcslib::Socket& tartget, const string_view& msg);
+void send_file_to(mfcslib::Socket& target, mfcslib::File& file);
+void get_file_from(mfcslib::Socket& tartget, const string& file);
 
 constexpr array<string_view, 11> all_percent = {
 	"\r[----------]",

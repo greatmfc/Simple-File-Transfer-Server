@@ -139,7 +139,7 @@ namespace mfcslib {
 		}
 		auto read(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
 			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
+			if (pos >= len || sz > len || pos + sz >= len)
 				throw out_of_range("In read, pos or sz is out of range.");
 			auto ret = ::read(_fd, buf.get_ptr() + pos, sz);
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
@@ -152,7 +152,7 @@ namespace mfcslib {
 		}
 		auto write(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
 			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
+			if (pos >= len || sz > len || pos + sz >= len)
 				throw out_of_range("In write, pos or sz is out of range.");
 			auto ret = ::write(_fd, buf.get_ptr() + pos, sz);
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
