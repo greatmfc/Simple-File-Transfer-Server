@@ -41,7 +41,7 @@ void receive_loop::loop()
 		exit(errno);
 	}
 	*/
-	sockaddr_in addr{ {0} };
+	sockaddr_in addr;
 	socklen_t len = sizeof addr;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
@@ -61,7 +61,6 @@ void receive_loop::loop()
 			//exit(1);
 			LOG_ERROR("Error in epoll_wait: ", strerror(errno));
 		}
-		else continue;
 		for (int i = 0; i < count; ++i) {
 			int react_fd = epoll_instance.events[i].data.fd;
 
@@ -194,42 +193,74 @@ void receive_loop::deal_with_file(int fd)
 	//connection_storage[fd].bytes_to_deal_with = size;
 	//connection_storage[fd].buf = new char[size];
 	//char* buf = connection_storage[fd].buf;
-	if (size < MAXARRSZ) {
-		auto bufferForFile = mfcslib::make_array<Byte>(size);
-		auto ret = 0ull;
-		auto bytesLeft = size;
-		while (true) {
-			ret += bufferForFile.read(fd, ret, bytesLeft);
-			bytesLeft = size - ret;
-		#ifdef DEBUG
-			progress_bar(ret, size);
-		#endif // DEBUG
-			if (bytesLeft <= 0) break;
-		}
-		output_file.write(bufferForFile);
-	}
-	else {
-		auto bufferForFile = mfcslib::make_array<Byte>(MAXARRSZ);
-		auto ret = 0ull;
-		auto bytesWritten = ret;
-		while (true) {
-			auto currentReturn = 0;
-			while (ret < (MAXARRSZ - 200'000)) {
-				currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
-				if (currentReturn <= 0) break;
-				ret += currentReturn;
-				if (ret + bytesWritten >= size) break;
+	try {
+		auto complete = false;
+		if (size < MAXARRSZ) {
+			auto bufferForFile = mfcslib::make_array<Byte>(size);
+			auto ret = 0ll;
+			auto bytesLeft = size;
+			while (true) {
+				auto currentRet = bufferForFile.read(fd, ret, bytesLeft);
+				if (currentRet < 0) continue;
+				ret += currentRet;
+				bytesLeft = size - ret;
+			#ifdef DEBUG
+				progress_bar(ret, size);
+			#endif // DEBUG
+				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
-			if (currentReturn <= 0) break;
-			output_file.write(bufferForFile, 0, ret);
-			bytesWritten += ret;
-		#ifdef DEBUG
-			progress_bar(bytesWritten, size);
-		#endif // DEBUG
-			if (bytesWritten >= size) break;
-			bufferForFile.empty_array();
-			ret = 0;
+			if (bytesLeft <= 0) complete = true;
+			output_file.write(bufferForFile);
+
 		}
+		else {
+			auto bufferForFile = mfcslib::make_array<Byte>(MAXARRSZ);
+			auto ret = 0ll;
+			size_t bytesWritten = ret;
+			while (true) {
+				auto currentReturn = 0ll;
+				while (ret < (MAXARRSZ - 200'000)) {
+					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
+					if (currentReturn < 0) continue;
+					ret += currentReturn;
+					bytesWritten += currentReturn;
+				#ifdef DEBUG
+					progress_bar(bytesWritten, size);
+				#endif // DEBUG
+					if (bytesWritten >= size || currentReturn == 0) break;
+				}
+				output_file.write(bufferForFile, 0, ret);
+				if (bytesWritten >= size) {
+					complete = true;
+					break;
+				}
+				if (currentReturn == 0) break;
+				bufferForFile.empty_array();
+				ret = 0;
+			}
+		}
+		if (complete) {
+			LOG_INFO("Success on receiving file: ", name_size);
+	#ifdef DEBUG
+			cout << "\nSuccess on receiving file: " << name_size;
+	#endif // DEBUG
+		}
+		else {
+			LOG_ERROR("Not received complete file data.");
+	#ifdef DEBUG
+			cout << "\nNot received complete file data.\n";
+	#endif // DEBUG
+		}
+	#ifdef DEBUG
+		cout.flush();
+	#endif // DEBUG
+	}
+	catch (const std::exception& e) {
+		LOG_ERROR("Client:", ADDRSTR(connection_storage[fd].address), e.what());
+		LOG_CLOSE(connection_storage[fd].address);
+	#ifdef DEBUG
+		cout << e.what() << '\n';
+	#endif // DEBUG
 	}
 	/*
 	ssize_t ret = 0;
@@ -277,10 +308,6 @@ void receive_loop::deal_with_file(int fd)
 		}
 	}
 	*/
-#ifdef DEBUG
-	cout << "\nSuccess on receiving file: " << name_size;
-	cout.flush();
-#endif // DEBUG
 	//delete buf;
 	connection_storage[fd].buffer_for_pre_messsage.clear();
 }
@@ -368,7 +395,7 @@ void receive_loop::deal_with_get_file(int fd)
 		return;
 	}
 	off_t off = 0;
-	long send_size = st.st_size;
+	uintmax_t send_size = st.st_size;
 	while (send_size > 0) {
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
 		if (ret <= 0)
@@ -386,7 +413,7 @@ void receive_loop::deal_with_get_file(int fd)
 		}
 		send_size -= ret;
 	#ifdef DEBUG
-		progress_bar((float)(st.st_size - send_size), (float)st.st_size);
+		progress_bar((st.st_size - send_size), st.st_size);
 	#endif // DEBUG
 	}
 #ifdef DEBUG

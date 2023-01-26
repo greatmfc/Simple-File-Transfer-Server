@@ -57,7 +57,7 @@ void check_file(char*& path) {
 
 void parse_arg(const string_view& arg, string& ip, uint16_t& port) {
 	auto idx = arg.find(':');
-	if (idx == -1) {
+	if (idx == string_view::npos) {
 		fprintf(stderr, "Fail to locate port number.\n");
 		exit(1);
 	}

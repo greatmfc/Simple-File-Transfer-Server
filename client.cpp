@@ -219,10 +219,10 @@ void send_file_to(mfcslib::Socket& target, mfcslib::File& file) {
 		throw runtime_error(error_msg);
 	}
 	off_t off = 0;
-	auto have_send = 0;
+	uintmax_t have_send = 0;
 	auto file_sz = file.size();
 	while (have_send < file_sz) {
-		ssize_t ret = sendfile(target.get_fd(), file.get_fd(), &off, file_sz);
+		auto ret = sendfile(target.get_fd(), file.get_fd(), &off, file_sz);
 		if(ret < 0)
 		{
 			perror("Sendfile failed");
@@ -232,7 +232,7 @@ void send_file_to(mfcslib::Socket& target, mfcslib::File& file) {
 	#ifdef DEBUG
 		cout << "have send :" << ret << endl;
 	#endif // DEBUG
-		progress_bar(float(have_send), float(file_sz));
+		progress_bar(have_send, file_sz);
 	}
 	cout << '\n';
 }
@@ -254,10 +254,10 @@ void get_file_from(mfcslib::Socket& tartget, const string& file) {
 
 	mfcslib::File file_output_stream(file, true, O_WRONLY);
 	auto msg_string = msg.to_string();
-	auto sizeOfFile = std::stoi(msg_string.substr(msg_string.find_last_of('/')+1));
+	auto sizeOfFile = std::stoull(msg_string.substr(msg_string.find_last_of('/')+1));
 	if (sizeOfFile < MAXARRSZ) {
 		auto bufferForFile = mfcslib::make_array<Byte>(sizeOfFile);
-		auto ret = 0;
+		ssize_t ret = 0;
 		auto bytesLeft = sizeOfFile;
 		while (true) {
 			ret += tartget.read(bufferForFile, ret, bytesLeft);
@@ -269,10 +269,10 @@ void get_file_from(mfcslib::Socket& tartget, const string& file) {
 	}
 	else {
 		auto bufferForFile = mfcslib::make_array<Byte>(MAXARRSZ);
-		auto ret = 0;
+		auto ret = 0ull;
 		auto bytesWritten = ret;
 		while (true) {
-			auto currentReturn = 0;
+			ssize_t currentReturn = 0;
 			while (ret < (MAXARRSZ - 200'000)) {
 				currentReturn = tartget.read(bufferForFile, ret, MAXARRSZ - ret);
 				if (currentReturn <= 0) break;

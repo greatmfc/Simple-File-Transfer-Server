@@ -28,18 +28,18 @@ namespace mfcslib {
 	template<typename _Type>
 	class TypeArray
 	{
-		using size_type = uint32_t;
+		using size_type = size_t;
 	public:
 		TypeArray() = delete;
 		TypeArray(const TypeArray& arg) = delete;
 		~TypeArray() {
 			if (_DATA != nullptr) {
-				delete _DATA;
+				delete[] _DATA;
 				_SIZE = 0;
 				_DATA = nullptr;
 			}
 		};
-		constexpr explicit TypeArray(int sz) :_SIZE(sz) {
+		constexpr explicit TypeArray(size_t sz) :_SIZE(sz) {
 			_DATA = new _Type[sz];
 			memset(_DATA, 0, sz);
 		}
@@ -56,8 +56,8 @@ namespace mfcslib {
 		constexpr bool empty() {
 			return _DATA == nullptr;
 		}
-		constexpr void fill(_Type val, int start, int end) {
-			if (start < 0 || end < 0 || start >= end) throw std::out_of_range("In fill.");
+		constexpr void fill(_Type val, size_t start, size_t end) {
+			if (start >= end) throw std::out_of_range("In fill, start is greater or equal to end.");
 			memset(_DATA + start, val, end - start);
 		}
 		constexpr void empty_array() {
@@ -68,26 +68,26 @@ namespace mfcslib {
 		}
 		constexpr auto read(int fd) {
 			auto ret = ::read(fd, _DATA, _SIZE);
-			if (ret < 0) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
-		constexpr auto read(int fd, unsigned pos, unsigned sz) {
-			if (pos >= _SIZE || sz > _SIZE)
+		constexpr auto read(int fd, size_t pos, size_t sz) {
+			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE)
 				throw out_of_range("In read, pos or sz is out of range.");
 			auto ret=::read(fd, _DATA + pos, sz);
-			if (ret < 0) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
 		constexpr auto write(int fd) {
 			auto ret = ::write(fd, _DATA, _SIZE);
-			if (ret < 0) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
-		constexpr auto write(int fd, unsigned pos, unsigned sz) {
-			if (pos >= _SIZE || sz > _SIZE) 
+		constexpr auto write(int fd, ssize_t pos, size_t sz) {
+			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE) 
 				throw out_of_range("In write, pos or sz is out of range.");
 			auto ret = ::write(fd, _DATA + pos, sz);
-			if (ret < 0) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
 		constexpr void destroy() {
@@ -111,7 +111,7 @@ namespace mfcslib {
 	};
 
 	template<typename T>
-	auto make_array(int sz) {
+	auto make_array(size_t sz) {
 		return TypeArray<T>(sz);
 	}
 	
@@ -137,9 +137,9 @@ namespace mfcslib {
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
-		auto read(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
+		auto read(TypeArray<Byte>& buf, size_t pos, size_t sz) {
 			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz >= len)
+			if (pos >= len || sz > len || pos + sz > len)
 				throw out_of_range("In read, pos or sz is out of range.");
 			auto ret = ::read(_fd, buf.get_ptr() + pos, sz);
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
@@ -150,9 +150,9 @@ namespace mfcslib {
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
 			return ret;
 		}
-		auto write(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
+		auto write(TypeArray<Byte>& buf, size_t pos, size_t sz) {
 			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz >= len)
+			if (pos >= len || sz > len || pos + sz > len)
 				throw out_of_range("In write, pos or sz is out of range.");
 			auto ret = ::write(_fd, buf.get_ptr() + pos, sz);
 			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
@@ -168,6 +168,9 @@ namespace mfcslib {
 		}
 		auto get_fd() {
 			return _fd;
+		}
+		auto available() {
+			return _fd != -1;
 		}
 		auto set_nonblocking() {
 			int old_option = fcntl(_fd, F_GETFL);
@@ -203,6 +206,11 @@ namespace mfcslib {
 		File(const string& file, bool trunc,int rwmode) {
 			this->open(file, trunc, rwmode);
 		}
+		File(File&& other) {
+			this->_fd = other._fd;
+			this->_path = std::move(other._path);
+			other._fd = -1;
+		}
 		~File() {}
 		bool is_existing() {
 			return _fd > 0;
@@ -232,6 +240,12 @@ namespace mfcslib {
 	public:
 		Socket() = default;
 		Socket(const Socket&) = delete;
+		Socket(Socket&& other)noexcept {
+			this->_fd = other._fd;
+			other._fd = -1;
+			this->ip_port = other.ip_port;
+			::memset(&other.ip_port, 0, sizeof(other.ip_port));
+		}
 		Socket(int fd, sockaddr_in addr_info){
 			_fd = fd;
 			ip_port = addr_info;
@@ -300,6 +314,12 @@ namespace mfcslib {
 	public:
 		ServerSocket() = delete;
 		ServerSocket(const ServerSocket&) = delete;
+		ServerSocket(ServerSocket&& other)noexcept {
+			this->_fd = other._fd;
+			other._fd = -1;
+			this->ip_port = other.ip_port;
+			::memset(&other.ip_port, 0, sizeof(other.ip_port));
+		}
 		ServerSocket(uint16_t port) {
 		#ifdef _WIN32
 			WORD sockVersion=MAKEWORD(2,2);
@@ -312,7 +332,7 @@ namespace mfcslib {
 			ip_port.sin_family = AF_INET;
 			ip_port.sin_addr.s_addr = htonl(INADDR_ANY);
 			ip_port.sin_port = htons(port);
-			_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+			_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 			if (_fd <= 0) {
 				throw runtime_error(strerror(errno));
 			}
@@ -328,7 +348,7 @@ namespace mfcslib {
 			}
 		}
 		Socket accpet() {
-			sockaddr_in addrs{ 0 };
+			sockaddr_in addrs{};
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
 			if (ret < 0) {
