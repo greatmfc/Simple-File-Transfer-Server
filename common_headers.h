@@ -13,7 +13,7 @@
 #include "classes.hpp"
 
 #define DEFAULT_PORT 9007
-#define LAST_MODIFY 20230126L
+#define LAST_MODIFY 20230130L
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \
@@ -29,7 +29,7 @@ The third number specifies a bug-fix-version which fix potential bugs in program
 The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
-#define VERSION "1.3.3.1"
+#define VERSION "1.3.3.2"
 #define BUFFER_SIZE 64
 #define EPOLL_EVENT_NUMBER 32
 #define ALARM_TIME 300
@@ -245,67 +245,6 @@ private:
 	int epoll_fd;
 };
 
-/*
-class setup
-{
-public:
-	setup();
-	setup(const char* ip_addr,const int port);
-	~setup() = default;
-	int socket_fd;
-	struct sockaddr_in addr;
-
-private:
-	unsigned long target_addr;
-	int write_to_sock;
-};
-
-class basic_action
-{
-protected:
-	basic_action() = default;
-	~basic_action() = default;
-	int socket_fd;
-	int status_code;
-	setup* pt;
-};
-class send_file : public basic_action
-{
-public:
-	send_file() = delete;
-	send_file(setup& s, const string& path);
-	~send_file() = default;
-	void write_to();
-
-private:
-	string file_path;
-};
-
-class send_msg : public basic_action
-{
-public:
-	send_msg() = delete;
-	send_msg(setup& s, const string_view& msg);
-	void write_to();
-	~send_msg() = default;
-private:
-	string_view msg;
-};
-
-class get_file : public basic_action
-{
-public:
-	get_file() = delete;
-	get_file(setup& s, string_view&& msg);
-	~get_file() = default;
-	void get_it();
-
-private:
-	string_view file_name;
-
-};
-
-*/
 
 class receive_loop
 {
@@ -316,8 +255,6 @@ public:
 	void loop();
 
 private:
-	//struct sockaddr_in addr;
-	//socklen_t len;
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connection_storage;
 	unordered_map<unsigned int, ofstream*> addr_to_stream;

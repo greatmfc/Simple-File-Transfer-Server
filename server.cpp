@@ -34,20 +34,12 @@ void receive_loop::loop()
 	}
 	mfcslib::ServerSocket localserver(DEFAULT_PORT);
 	running = true;
-	/*
-	int ret=listen(socket_fd, 5);
-	if (ret < 0) {
-		LOG_ERROR("Error while listen to socket: ", strerror(errno));
-		exit(errno);
-	}
-	*/
 	sockaddr_in addr;
 	socklen_t len = sizeof addr;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
 	epoll_instance.add_fd_or_event_to_epoll(socket_fd, false, true, 0);
 	epoll_instance.add_fd_or_event_to_epoll(pipe_fd[0], false, true, 0);
-	//epoll_instance.set_fd_no_block(socket_fd);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
@@ -56,9 +48,6 @@ void receive_loop::loop()
 	while (running) {
 		int count = epoll_instance.wait_for_epoll();
 		if (count < 0 && errno != EINTR) {
-			//LOG_ERROR_C(pt->addr);
-			//perror("Error epoll_wait");
-			//exit(1);
 			LOG_ERROR("Error in epoll_wait: ", strerror(errno));
 		}
 		for (int i = 0; i < count; ++i) {
@@ -187,12 +176,7 @@ void receive_loop::deal_with_file(int fd)
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
 	auto name = "./" + name_size.substr(0, idx);
-	//strncat(full_path, msg, strcspn(msg, "/"));
-	//int write_fd = open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
 	mfcslib::File output_file(name, true, O_WRONLY);
-	//connection_storage[fd].bytes_to_deal_with = size;
-	//connection_storage[fd].buf = new char[size];
-	//char* buf = connection_storage[fd].buf;
 	try {
 		auto complete = false;
 		if (size < MAXARRSZ) {
@@ -262,53 +246,6 @@ void receive_loop::deal_with_file(int fd)
 		cout << e.what() << '\n';
 	#endif // DEBUG
 	}
-	/*
-	ssize_t ret = 0;
-	while (size)
-	{
-		ret=read(fd, buf, size);
-		if (ret <= 0)
-		{
-			if (ret == 0) break;
-			if (errno == EAGAIN) continue;
-			if (ret != 0) {
-				LOG_ERROR_C(connection_storage[fd].address);
-				LOG_CLOSE(connection_storage[fd].address);
-			#ifdef DEBUG
-				perror("Receieve failed");
-			#endif // DEBUG
-			}
-			break;
-		}
-		size -= ret;
-		buf += ret;
-	#ifdef DEBUG
-		progress_bar((float)(connection_storage[fd].bytes_to_deal_with - size),
-			(float)connection_storage[fd].bytes_to_deal_with);
-	#endif // DEBUG
-	}
-	buf = connection_storage[fd].buf;
-	for (;;) {
-		ret = write(write_fd,
-			connection_storage[fd].buf,
-			connection_storage[fd].bytes_to_deal_with);
-		if (ret < 0) {
-			LOG_ERROR_C(connection_storage[fd].address);
-#ifdef DEBUG
-			perror("\nServer write to local failed");
-#endif // DEBUG
-			delete buf;
-			connection_storage[fd].buffer_for_pre_messsage.clear();
-			return;
-		}
-		connection_storage[fd].bytes_to_deal_with -= ret;
-		connection_storage[fd].buf += ret;
-		if (connection_storage[fd].bytes_to_deal_with <= 0) {
-			break;
-		}
-	}
-	*/
-	//delete buf;
 	connection_storage[fd].buffer_for_pre_messsage.clear();
 }
 
