@@ -4,7 +4,7 @@ STDVER = -std=c++17
 
 DEBUGFLAGS = -g -DDEBUG
 
-WARMFLAGS = -Wall -Wextra -Werror -Wpointer-arith -Wnon-virtual-dtor \
+WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor \
 			-Wno-error=unused-variable -Wno-error=unused-parameter
 
 object = thread_pool.cpp epoll_utility.cpp log.cpp server.cpp client.cpp main.cpp

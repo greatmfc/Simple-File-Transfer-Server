@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <locale>
+#include <csignal>
 #include "common_headers.h"
 using std::locale;
 using std::cout;
@@ -54,40 +55,32 @@ void check_file(char*& path) {
 	}
 }
 
-void parse_arg(char*& arg, char*& port, char*& ip) {
-	ip = new char[16];
-	port = new char[8];
-	memset(ip, 0, 16);
-	memset(port, 0, 8);
-	char* tmp = strchr(arg, ':');
-	if (tmp == NULL) {
+void parse_arg(const string_view& arg, string& ip, uint16_t& port) {
+	auto idx = arg.find(':');
+	if (idx == string_view::npos) {
 		fprintf(stderr, "Fail to locate port number.\n");
 		exit(1);
 	}
-	tmp += 1;
-	strcpy(port, tmp);
-	size_t sz = strcspn(arg, ":");
-	if (ip == nullptr) {
-		perror("Failed to allocate memory");
-		exit(1);
-	}
-	strncpy(ip, arg, sz);
+	ip = arg.substr(0, idx);
+	port = (uint16_t)atoi(arg.substr(idx + 1).data());
 }
 
-static void sigint_hanl(int sig) {
+static void sig_hanl(int sig) {
+	LOG_WARN("Receive ", strsignal(sig), ".");
+#ifdef DEBUG
+	cout << "\rReceived signal " << strsignal(sig) << endl;
+#endif // DEBUG
+	if (sig == SIGPIPE) return;
 #ifdef DEBUG
 	cout << "\rShutting down..." << endl;
 #endif // DEBUG
-	if (sig == SIGINT) {
-		LOG_WARN("Receive SIGINT.");
+	receive_loop::stop_loop(sig);
+}
+
+static void register_signal(const vector<int>& sigs) {
+	for (auto& sig : sigs) {
+		signal(sig, sig_hanl);
 	}
-	else if(sig == SIGSEGV) {
-		LOG_WARN("Receive SIGSEGV.");
-	}
-	else if (sig == SIGTERM) {
-		LOG_WARN("Receive SIGTERM.");
-	}
-	receive_loop::stop_loop();
 }
 
 int main(int argc, char* argv[])
@@ -98,6 +91,7 @@ int main(int argc, char* argv[])
 	char* path = nullptr;
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
+	static vector<int> sig_to_register = { SIGINT,SIGSEGV,SIGTERM,SIGPIPE };
 #ifndef __aarch64__
 	locale::global(locale("en_US.UTF-8"));
 #endif // !__aarch64__
@@ -147,33 +141,26 @@ int main(int argc, char* argv[])
 	if (argc <= 2) {
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
-		signal(SIGINT, sigint_hanl);
-		signal(SIGSEGV, sigint_hanl);
-		signal(SIGTERM, sigint_hanl);
-		signal(SIGFPE, sigint_hanl);
-		setup st;
-		receive_loop rl(st);
+		register_signal(sig_to_register);
+		receive_loop rl;
 		rl.loop();
 	}
 	else{
-		char* ip, * port;
-		parse_arg(argv[optind], port, ip);
-		setup st(ip, atoi(port));
+		string ip;
+		uint16_t port = 0;
+		parse_arg(argv[optind], ip, port);
+		mfcslib::Socket server(ip, port);
 		if (path != nullptr) {
 			check_file(path);
-			send_file sf(st, path);
-			sf.write_to();
+			mfcslib::File file(path, false, 0);
+			send_file_to(server, file);
 		}
 		else if (mesg != nullptr) {
-			send_msg sm(st, mesg);
-			sm.write_to();
+			send_msg_to(server, mesg);
 		}
 		else if(file_to_get!=nullptr){
-			get_file gf(st, file_to_get);
-			gf.get_it();
+			get_file_from(server, file_to_get);
 		}
-		delete ip;
-		delete port;
 	}
 	cout << "Success on dealing. Please check the server." << endl;
 	return 0;
