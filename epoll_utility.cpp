@@ -1,33 +1,6 @@
-#ifdef ENABLE_MODULES
-module;
-#include <sys/epoll.h>
-#include <cstdio>
-#include <cstdlib>
-#include <fcntl.h>
-#include <unistd.h>
-#define EPOLL_EVENT_NUMBER 1024
-export module epoll_util;
-export{
-	class epoll_utility
-	{
-	public:
-		epoll_utility();
-		~epoll_utility();
-		void add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et, int ev);
-		int wait_for_epoll();
-		int set_fd_no_block(int fd);
-		void remove_fd_from_epoll(int fd);
-		epoll_event events[EPOLL_EVENT_NUMBER];
-	private:
-		int epoll_fd;
-	};
-}
-using std::exit;
-#else
 #include <sys/fcntl.h>
 #include <unistd.h>
 #include "common_headers.h"
-#endif // __cplusplus > 201703L
 
 epoll_utility::epoll_utility()
 {
@@ -59,9 +32,9 @@ void epoll_utility::add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et,
 	}
 }
 
-int epoll_utility::wait_for_epoll()
+int epoll_utility::wait_for_epoll(int timeout)
 {
-	return epoll_wait(epoll_fd,events,EPOLL_EVENT_NUMBER,-1);
+	return epoll_wait(epoll_fd, events, EPOLL_EVENT_NUMBER, timeout);
 }
 
 int epoll_utility::set_fd_no_block(int fd)

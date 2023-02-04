@@ -7,9 +7,14 @@
 #include <locale>
 #include <csignal>
 #include "common_headers.h"
+#include "classes.hpp"
 using std::locale;
 using std::cout;
 using std::endl;
+
+void send_msg_to(mfcslib::Socket& tartget, const string_view& msg);
+void send_file_to(mfcslib::Socket& target, mfcslib::File& file);
+void get_file_from(mfcslib::Socket& tartget, const string& file);
 void usage() {
 	fprintf(stderr,
 		"server mode:"

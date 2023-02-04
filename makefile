@@ -1,6 +1,6 @@
 CXX = g++
 
-STDVER = -std=c++17
+STDVER = -std=c++2a
 
 DEBUGFLAGS = -g -DDEBUG
 

@@ -10,10 +10,9 @@
 #include <netinet/in.h>
 #include <sys/epoll.h>
 #include <iostream>
-#include "classes.hpp"
 
 #define DEFAULT_PORT 9007
-#define LAST_MODIFY 20230130L
+#define LAST_MODIFY 20230204L
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \
@@ -81,7 +80,7 @@ enum log_enum
 	LERROR
 };
 
-typedef struct conn_info //存放文件描述符和文件类型
+typedef struct conn_info
 {
 	unsigned fd;
 	unsigned type;
@@ -148,14 +147,15 @@ public:
 	template <typename F,typename... Args,typename R=invoke_result_t<decay_t<F>,decay_t<Args>...>>
 	future<R> submit_to_pool(F&& f, Args&& ...args) {
 		function<R()> func_bind = bind(forward<F>(f), forward<Args>(args)...);
-		//contains functions that returns type R with no extra argument
+		/* Contains functions that returns type R with no extra argument. */
 		auto task_ptr = make_shared<packaged_task<R()>>(func_bind);
-		//probably with implicit conversion
+		/* Probably with implicit conversion */
 		function<void()> wrapper_func = [task_ptr]() {
 			(*task_ptr)();
-		}; //optional
-		//this wrapper_func contains a lambda function
-		//that captures a shared_ptr and execute after dereference it
+		}; /* optional */
+		/* This wrapper_func contains a lambda function
+		 * that captures a shared_ptrand execute after dereference it
+		 */
 		m_queue.push(wrapper_func);
 		m_cv.notify_one();
 		return task_ptr->get_future();
@@ -236,7 +236,7 @@ public:
 	epoll_utility();
 	~epoll_utility();
 	void add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et, int ev);
-	int wait_for_epoll();
+	int wait_for_epoll(int timeout);
 	int set_fd_no_block(int fd);
 	void remove_fd_from_epoll(int fd);
 	epoll_event events[EPOLL_EVENT_NUMBER];
@@ -269,10 +269,6 @@ private:
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
 };
-
-void send_msg_to(mfcslib::Socket& tartget, const string_view& msg);
-void send_file_to(mfcslib::Socket& target, mfcslib::File& file);
-void get_file_from(mfcslib::Socket& tartget, const string& file);
 
 constexpr array<string_view, 11> all_percent = {
 	"\r[----------]",

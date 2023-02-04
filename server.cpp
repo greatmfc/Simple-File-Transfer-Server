@@ -12,6 +12,8 @@
 #include <string_view>
 #include <unordered_map>
 #include "common_headers.h"
+#include "coroutine.hpp"
+#include "classes.hpp"
 using std::cout;
 using std::endl;
 using std::to_string;
@@ -34,7 +36,7 @@ void receive_loop::loop()
 	}
 	mfcslib::ServerSocket localserver(DEFAULT_PORT);
 	running = true;
-	sockaddr_in addr;
+	sockaddr_in addr{};
 	socklen_t len = sizeof addr;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
@@ -43,10 +45,11 @@ void receive_loop::loop()
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
+	int wait_time = -1;
 	//thread_pool tp;
 	//tp.init_pool();
 	while (running) {
-		int count = epoll_instance.wait_for_epoll();
+		int count = epoll_instance.wait_for_epoll(wait_time);
 		if (count < 0 && errno != EINTR) {
 			LOG_ERROR("Error in epoll_wait: ", strerror(errno));
 		}
