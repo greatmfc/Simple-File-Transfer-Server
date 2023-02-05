@@ -1,3 +1,5 @@
+#ifndef CL_HPP
+#define CL_HPP
 #include <cstring>
 #include <cassert>
 #include <fcntl.h>
@@ -7,13 +9,15 @@
 #include <sys/sendfile.h>
 #include <exception>
 #include <iostream>
-#include "common_headers.h"
-#include "classes.hpp"
+#include "io.hpp"
+#define BUFFER_SIZE 64
+#define MAXARRSZ 1024'000'000
 using std::cout;
 using std::cerr;
 using std::endl;
 using std::to_string;
 using std::invalid_argument;
+using std::string_view;
 using namespace mfcslib;
 
 void send_msg_to(mfcslib::Socket& target, const string_view& msg) {
@@ -105,5 +109,5 @@ void get_file_from(mfcslib::Socket& tartget, const string& file) {
 		}
 	}
 	cout << '\n';
-
 }
+#endif

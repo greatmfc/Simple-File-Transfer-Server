@@ -1,3 +1,5 @@
+#ifndef S_HPP
+#define S_HPP
 #include <cstring>
 #include <cstdlib>
 #include <cassert>
@@ -12,12 +14,87 @@
 #include <string_view>
 #include <unordered_map>
 #include <list>
-#include "common_headers.h"
-#include "classes.hpp"
+#include <unordered_map>
+#include "coroutine.hpp"
+#include "io.hpp"
+#include "epoll_utility.hpp"
+#include "logger.hpp"
+#ifndef MAXARRSZ
+#define MAXARRSZ 1024'000'000
+#endif // !MAXARRSZ
+#define ADDRSTR(_addr) inet_ntoa(_addr.sin_addr)
+#define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
+#define LOG_DEBUG(...) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
+#define LOG_VERBOSE log::get_instance()->process_and_submit(LDEBUG,"in ",__FILE__,':',std::to_string(__LINE__))
+#define LOG_WARN(...) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
+#define LOG_ERROR(...) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
+#define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",ADDRSTR(_addr),' ',_msg)
+#define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",ADDRSTR(_addr),' ',_msg)
+#define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",ADDRSTR(_addr))
+#define LOG_CLOSE(_addr) LOG_INFO("Closing :",ADDRSTR(_addr))
+#define LOG_ERROR_C(_addr) LOG_ERROR("Client:",ADDRSTR(_addr),' ',strerror(errno))
+#define GETERR strerror(errno)
+#define DEFAULT_PORT 9007
+#define ALARM_TIME 600
 using std::cout;
 using std::endl;
 using std::to_string;
 using std::ios;
+using std::unordered_map;
+using std::string;
+using std::ofstream;
+using namespace mfcslib;
+
+enum MyEnum
+{
+	FILE_TYPE,
+	MESSAGE_TYPE,
+	NONE_TYPE,
+	ERROR_TYPE,
+	GPS_TYPE,
+	ACCEPT,
+	CLOSE,
+	READ_PRE,
+	READ_MSG,
+	READ_DATA,
+	WRITE_DATA,
+	GET_TYPE
+};
+
+
+typedef struct data_info
+{
+	int reserved_var[8];
+	ssize_t bytes_to_deal_with;
+	char* buf;
+	string buffer_for_pre_messsage;
+	struct iovec iov;
+	sockaddr_in address;
+} data_info;
+
+class receive_loop
+{
+public:
+	receive_loop() = default;
+	~receive_loop() = default;
+	static void stop_loop(int sig);
+	void loop();
+
+private:
+	epoll_utility epoll_instance;
+	unordered_map<int, data_info> connection_storage;
+	unordered_map<unsigned int, ofstream*> addr_to_stream;
+	static inline bool running;
+	static inline int pipe_fd[2];
+
+	int decide_action(int fd);
+	void deal_with_file(int fd);
+	void deal_with_mesg(int fd);
+	void deal_with_gps(int fd);
+	mfcslib::co_handle deal_with_get_file(int fd);
+	void close_connection(int fd);
+	static void alarm_handler(int sig);
+};
 
 void receive_loop::stop_loop(int sig)
 {
@@ -413,4 +490,5 @@ void receive_loop::alarm_handler(int sig)
 	send(pipe_fd[1], &sig, 1, 0);
 	errno = save_errno;
 }
+#endif // !S_HPP
 

@@ -3,7 +3,7 @@
 #include <random>
 #include <chrono>
 #include <fstream>
-#include "../common_headers.h"
+#include "../all_module.h"
 using std::cerr;
 using std::array;
 using std::stoi;

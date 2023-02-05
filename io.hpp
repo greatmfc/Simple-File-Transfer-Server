@@ -1,24 +1,13 @@
-#ifndef CLA_HPP
-#define CLA_HPP
+#ifndef IO_HPP
+#define IO_HPP
 #include <iterator>
 #include <stdexcept>
 #include <filesystem>
 #include <fcntl.h>
-#ifdef _WIN32
-#include <io.h>
-#include <WinSock2.h>
-#define socklen_t int
-#define __read__(_1,_2,_3) ::recv(_1,_2,_3,0)
-#define __write__(_1,_2,_3) ::send(_1,_2,_3,0)
-#pragma warning(disable : 4996)
-#pragma comment(lib,"ws2_32.lib")
-#elif __linux__
 #include <unistd.h>
 #include <cstring>
 #include <arpa/inet.h>
-#else
-#error Unsupported Platform.
-#endif // WIN32
+#include <array>
 using std::out_of_range;
 using std::runtime_error;
 using std::string;
@@ -267,40 +256,6 @@ namespace mfcslib {
 				throw std::runtime_error(error_msg);
 			}
 		}
-	#ifdef _WIN32
-		auto read(TypeArray<Byte>& buf) {
-			auto ret = __read__(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		auto read(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
-			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
-				throw out_of_range("In read, pos or sz is out of range.");
-			auto ret = __read__(_fd, buf.get_ptr(), len);
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		auto write(TypeArray<Byte>& buf) {
-			auto ret = __write__(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		auto write(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
-			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
-				throw out_of_range("In write, pos or sz is out of range.");
-			auto ret = __write__(_fd, buf.get_ptr(), len);
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		void close() {
-			if (_fd != -1) {
-				::closesocket(_fd);
-				_fd = -1;
-			}
-		}
-	#endif // _WIN32
 		~Socket() {
 			this->close();
 		}
@@ -358,5 +313,30 @@ namespace mfcslib {
 		}
 		~ServerSocket() {}
 	};
+
+	constexpr std::array<std::string_view, 11> all_percent = {
+		"\r[----------]",
+		"\r[*---------]",
+		"\r[**--------]",
+		"\r[***-------]",
+		"\r[****------]",
+		"\r[*****-----]",
+		"\r[******----]",
+		"\r[*******---]",
+		"\r[********--]",
+		"\r[*********-]",
+		"\r[**********]",
+	};
+	template<typename T, typename R>
+	inline bool progress_bar(T num1, R num2) {
+		double percent = static_cast<double>(num1) / static_cast<double>(num2);
+		if (percent > 1 || percent <= 0) {
+			throw std::invalid_argument("Wrong percent");
+		}
+		uintmax_t index = uintmax_t(percent * 10);
+		std::cout << all_percent[index] << ' ' << std::to_string(percent * 100) << '%';
+		std::cout.flush();
+		return true;
+	}
 }
-#endif // !CLA_HPP
+#endif // !IO_HPP

@@ -6,15 +6,13 @@
 #include <sys/stat.h>
 #include <locale>
 #include <csignal>
-#include "common_headers.h"
-#include "classes.hpp"
+#include <vector>
+#include "all_module.h"
 using std::locale;
 using std::cout;
 using std::endl;
+using std::vector;
 
-void send_msg_to(mfcslib::Socket& tartget, const string_view& msg);
-void send_file_to(mfcslib::Socket& target, mfcslib::File& file);
-void get_file_from(mfcslib::Socket& tartget, const string& file);
 void usage() {
 	fprintf(stderr,
 		"server mode:"
@@ -22,14 +20,14 @@ void usage() {
 		"client mode:"
 		"./sft.out [option] [argument] ip:port\n"
 		"options: \n"
-		"-c				Check mode for identification before receiving.\n"
 		"-f				File mode for sending file.Argument is your file's path.\n"
 		"-m				Message mode for sending message.Argument is your content.\n"
 		"-h				This information.\n"
 		"-v				Display version.\n"
 		"-n				No log file left behind after finishing program.\n"
 		"-g				Fetch file from server.\n"
-		"Example:		./sft.out -f ./file 255.255.255.0:8888\n"
+		"Example:\n"
+		"				./sft.out -f ./file 255.255.255.0:8888\n"
 		"				./sft.out -m hello,world! 255.255.255.0:8888\n"
 		"				./sft.out -g file_name 255.255.255.0:8888\n"
 	);
@@ -104,37 +102,25 @@ int main(int argc, char* argv[])
 		switch (opt)
 		{
 		case 'm':
-		{
 			mesg = optarg;
 			break; 
-		}
 		case 'f':
-		{
 			path = optarg;
 			break; 
-		}
 		case 'h':
-		{
 			usage();
-			break; 
-		}
+			break;
 		case 'v':
-		{
 			version();
 			break; 
-		}
 		case 'n':
-		{
 			log::get_instance()->no_logfile();
 			no_log_file = true;
 			break;
-		}
 		case 'g':
-		{
 			file_to_get = optarg;
 			break;
-		}
-			default: break;
+		default: break;
 		}
 	}
 	if (argc != 1 && optind == argc) {

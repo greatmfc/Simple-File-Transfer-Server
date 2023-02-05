@@ -7,7 +7,7 @@ DEBUGFLAGS = -g -DDEBUG
 WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor \
 			-Wno-error=unused-variable -Wno-error=unused-parameter
 
-object = thread_pool.cpp epoll_utility.cpp log.cpp server.cpp client.cpp main.cpp
+object = main.cpp
 
 output = sft.out
 
