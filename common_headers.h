@@ -10,9 +10,10 @@
 #include <netinet/in.h>
 #include <sys/epoll.h>
 #include <iostream>
+#include "coroutine.hpp"
 
 #define DEFAULT_PORT 9007
-#define LAST_MODIFY 20230204L
+#define LAST_MODIFY 20230205L
 /*
 The first number specifies a major-version which will lead to \
 	structure and interface changes and might not be compatible \
@@ -28,7 +29,7 @@ The third number specifies a bug-fix-version which fix potential bugs in program
 The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
-#define VERSION "1.3.3.2"
+#define VERSION "1.4.3.1"
 #define BUFFER_SIZE 64
 #define EPOLL_EVENT_NUMBER 32
 #define ALARM_TIME 300
@@ -235,7 +236,7 @@ class epoll_utility
 public:
 	epoll_utility();
 	~epoll_utility();
-	void add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et, int ev);
+	void add_fd_or_event(int fd, bool one_shot, bool use_et, int ev);
 	int wait_for_epoll(int timeout);
 	int set_fd_no_block(int fd);
 	void remove_fd_from_epoll(int fd);
@@ -265,7 +266,7 @@ private:
 	void deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
-	void deal_with_get_file(int fd);
+	mfcslib::co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
 };

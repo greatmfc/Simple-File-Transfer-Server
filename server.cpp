@@ -11,8 +11,8 @@
 #include <iostream>
 #include <string_view>
 #include <unordered_map>
+#include <list>
 #include "common_headers.h"
-#include "coroutine.hpp"
 #include "classes.hpp"
 using std::cout;
 using std::endl;
@@ -40,18 +40,20 @@ void receive_loop::loop()
 	socklen_t len = sizeof addr;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
-	epoll_instance.add_fd_or_event_to_epoll(socket_fd, false, true, 0);
-	epoll_instance.add_fd_or_event_to_epoll(pipe_fd[0], false, true, 0);
+	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
+	epoll_instance.add_fd_or_event(pipe_fd[0], false, true, 0);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
 	int wait_time = -1;
+	std::list<mfcslib::co_handle> tasks;
 	//thread_pool tp;
 	//tp.init_pool();
 	while (running) {
 		int count = epoll_instance.wait_for_epoll(wait_time);
-		if (count < 0 && errno != EINTR) {
-			LOG_ERROR("Error in epoll_wait: ", strerror(errno));
+		if (count <= 0) {
+			if (count < 0)	LOG_ERROR("Error in epoll_wait: ", strerror(errno));
+			goto co;
 		}
 		for (int i = 0; i < count; ++i) {
 			int react_fd = epoll_instance.events[i].data.fd;
@@ -74,7 +76,7 @@ void receive_loop::loop()
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
 				#endif // DEBUG
 					LOG_ACCEPT(addr);
-					epoll_instance.add_fd_or_event_to_epoll(accepted_fd, false, true, 0);
+					epoll_instance.add_fd_or_event(accepted_fd, true, true, 0);
 					epoll_instance.set_fd_no_block(accepted_fd);
 					connection_storage[accepted_fd].address = addr;
 				}
@@ -110,7 +112,7 @@ void receive_loop::loop()
 					break;
 				case GET_TYPE:
 					//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
-					deal_with_get_file(react_fd);
+					tasks.emplace_back(deal_with_get_file(react_fd));
 					break;
 				default:
 					LOG_INFO(
@@ -123,6 +125,22 @@ void receive_loop::loop()
 					break;
 				}
 			}
+		}
+	co:
+		if (!tasks.empty()) {
+			wait_time = 10;
+			for (ssize_t i = tasks.size(); i-- > 0;) {
+				for (auto ite = tasks.begin(); ite != tasks.end(); ++ite) {
+					if (ite->done()) {
+						tasks.erase(ite);
+						break;
+					}
+					else ite->resume();
+				}
+			}
+		}
+		else {
+			wait_time = -1;
 		}
 	}
 	//tp.shutdown_pool();
@@ -287,7 +305,7 @@ void receive_loop::deal_with_gps(int fd)
 	connection_storage[fd].buffer_for_pre_messsage.clear();
 }
 
-void receive_loop::deal_with_get_file(int fd)
+mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 {
 	LOG_INFO("Receive file request from:",
 		ADDRSTR(connection_storage[fd].address), ' ',
@@ -302,7 +320,7 @@ void receive_loop::deal_with_get_file(int fd)
 		connection_storage[fd].buffer_for_pre_messsage.clear();
 		char code = '0';
 		write(fd, &code, sizeof code);
-		return;
+		co_return;
 	}
 
 	int file_fd = open(full_path.c_str(), O_RDONLY);
@@ -311,7 +329,7 @@ void receive_loop::deal_with_get_file(int fd)
 		char code = '0';
 		write(fd, &code, sizeof code);
 		connection_storage[fd].buffer_for_pre_messsage.clear();
-		return;
+		co_return;
 	}
 	fstat(file_fd, &st);
 	string react_msg(&full_path.c_str()[2]);
@@ -322,6 +340,7 @@ void receive_loop::deal_with_get_file(int fd)
 	while (1) {
 		ret = recv(fd, &flag, sizeof(flag), 0);
 		if (ret >= 0 || errno != EAGAIN) break;
+		else co_yield 1;
 	}
 	if (flag != '1' || ret <= 0) {
 #ifdef DEBUG
@@ -332,24 +351,34 @@ void receive_loop::deal_with_get_file(int fd)
 		LOG_CLOSE(connection_storage[fd].address);
 		close_connection(fd);
 		connection_storage[fd].buffer_for_pre_messsage.clear();
-		return;
+		co_return;
 	}
 	off_t off = 0;
 	uintmax_t send_size = st.st_size;
 	while (send_size > 0) {
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
+	#ifdef DEBUG
+		//cout << "Return from sendfile: " << ret << endl;
+	#endif // DEBUG
 		if (ret <= 0)
 		{
-			if (errno == EAGAIN) continue;
-			if (ret != 0) {
-				LOG_ERROR_C(connection_storage[fd].address);
-				LOG_CLOSE(connection_storage[fd].address);
-				close_connection(fd);
-			#ifdef DEBUG
-				perror("Sendfile failed");
-			#endif // DEBUG
+			if (errno == EAGAIN) {
+				co_yield 1;
+				continue;
 			}
-			break;
+			else {
+				if (ret < 0) {
+					LOG_ERROR_C(connection_storage[fd].address);
+					//LOG_CLOSE(connection_storage[fd].address);
+					//close_connection(fd);
+				#ifdef DEBUG
+					perror("Sendfile failed");
+				#endif // DEBUG
+				}
+				LOG_ERROR("Not received complete file data.");
+				goto end;
+			}
+			//break;
 		}
 		send_size -= ret;
 	#ifdef DEBUG
@@ -357,10 +386,12 @@ void receive_loop::deal_with_get_file(int fd)
 	#endif // DEBUG
 	}
 #ifdef DEBUG
-	cout << "\nFinishing file sending.\n";
+	cout << "\nFinishing file sending." << endl;
 #endif // DEBUG
 	LOG_INFO("Success on sending file to client:", ADDRSTR(connection_storage[fd].address));
-	connection_storage[fd].buffer_for_pre_messsage.clear();
+end:connection_storage[fd].buffer_for_pre_messsage.clear();
+	epoll_instance.add_fd_or_event(fd, true, true, 0);
+	co_return;
 }
 
 void receive_loop::close_connection(int fd)

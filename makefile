@@ -16,7 +16,7 @@ LIB = -pthread
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -Ofast
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O3 -march=native
 
 testing: $(object)
 	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)

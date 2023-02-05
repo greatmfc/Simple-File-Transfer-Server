@@ -16,7 +16,7 @@ epoll_utility::~epoll_utility()
 	close(epoll_fd);
 }
 
-void epoll_utility::add_fd_or_event_to_epoll(int fd, bool one_shot, bool use_et,int ev)
+void epoll_utility::add_fd_or_event(int fd, bool one_shot, bool use_et,int ev)
 {
 	epoll_event events;
 	events.data.fd = fd;
