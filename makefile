@@ -2,7 +2,7 @@ CXX = g++
 
 STDVER = -std=c++2a
 
-DEBUGFLAGS = -g -DDEBUG
+DEBUGFLAGS = -g -DDEBUG -fsanitize=address
 
 WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor \
 			-Wno-error=unused-variable -Wno-error=unused-parameter

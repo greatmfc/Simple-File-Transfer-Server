@@ -1,109 +1,18 @@
 #ifndef IO_HPP
 #define IO_HPP
-#include <iterator>
 #include <stdexcept>
 #include <filesystem>
 #include <fcntl.h>
 #include <unistd.h>
 #include <cstring>
 #include <arpa/inet.h>
-#include <array>
+#include "util.hpp"
 using std::out_of_range;
 using std::runtime_error;
 using std::string;
 using namespace std::filesystem;
 using Byte = char;
 namespace mfcslib {
-	template<typename _Type>
-	class TypeArray
-	{
-		using size_type = size_t;
-	public:
-		TypeArray() = delete;
-		TypeArray(const TypeArray& arg) = delete;
-		~TypeArray() {
-			if (_DATA != nullptr) {
-				delete[] _DATA;
-				_SIZE = 0;
-				_DATA = nullptr;
-			}
-		};
-		constexpr explicit TypeArray(size_t sz) :_SIZE(sz) {
-			_DATA = new _Type[sz];
-			memset(_DATA, 0, sz);
-		}
-		constexpr explicit TypeArray(TypeArray&& arg) {
-			_DATA = arg._DATA;
-			arg._DATA = nullptr;
-			_SIZE = arg._SIZE;
-			arg._SIZE = 0;
-		}
-		constexpr _Type& operator[](int arg) {
-			if (arg < 0 || arg >= _SIZE) throw std::out_of_range("In [].");
-			return _DATA[arg];
-		}
-		constexpr bool empty() {
-			return _DATA == nullptr;
-		}
-		constexpr void fill(_Type val, size_t start, size_t end) {
-			if (start >= end) throw std::out_of_range("In fill, start is greater or equal to end.");
-			memset(_DATA + start, val, end - start);
-		}
-		constexpr void empty_array() {
-			fill(0, 0, _SIZE);
-		}
-		constexpr size_type length() {
-			return _SIZE;
-		}
-		constexpr auto read(int fd) {
-			auto ret = ::read(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto read(int fd, size_t pos, size_t sz) {
-			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE)
-				throw out_of_range("In read, pos or sz is out of range.");
-			auto ret=::read(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto write(int fd) {
-			auto ret = ::write(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto write(int fd, ssize_t pos, size_t sz) {
-			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE) 
-				throw out_of_range("In write, pos or sz is out of range.");
-			auto ret = ::write(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr void destroy() {
-			this->~TypeArray();
-		}
-		constexpr auto get_ptr() {
-			return _DATA;
-		}
-		constexpr auto to_string() {
-			return std::string(_DATA);
-		}
-		friend constexpr std::basic_ostream<_Type>&
-			operator<<(std::basic_ostream<_Type>& os, TypeArray<_Type>& str) {
-			os << str._DATA;
-			return os;
-		}
-
-	private:
-		_Type* _DATA = nullptr;
-		size_type _SIZE = 0;
-	};
-
-	template<typename T>
-	auto make_array(size_t sz) {
-		return TypeArray<T>(sz);
-	}
-	
 	class basic_io
 	{
 	protected:
@@ -276,13 +185,6 @@ namespace mfcslib {
 			::memset(&other.ip_port, 0, sizeof(other.ip_port));
 		}
 		ServerSocket(uint16_t port) {
-		#ifdef _WIN32
-			WORD sockVersion=MAKEWORD(2,2);
-			WSADATA wsaData;
-			if (WSAStartup(sockVersion, &wsaData) != 0) {
-				throw runtime_error("Startup fail.");
-			}
-		#endif // _WIN32
 			memset(&ip_port, 0, sizeof ip_port);
 			ip_port.sin_family = AF_INET;
 			ip_port.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -314,29 +216,5 @@ namespace mfcslib {
 		~ServerSocket() {}
 	};
 
-	constexpr std::array<std::string_view, 11> all_percent = {
-		"\r[----------]",
-		"\r[*---------]",
-		"\r[**--------]",
-		"\r[***-------]",
-		"\r[****------]",
-		"\r[*****-----]",
-		"\r[******----]",
-		"\r[*******---]",
-		"\r[********--]",
-		"\r[*********-]",
-		"\r[**********]",
-	};
-	template<typename T, typename R>
-	inline bool progress_bar(T num1, R num2) {
-		double percent = static_cast<double>(num1) / static_cast<double>(num2);
-		if (percent > 1 || percent <= 0) {
-			throw std::invalid_argument("Wrong percent");
-		}
-		uintmax_t index = uintmax_t(percent * 10);
-		std::cout << all_percent[index] << ' ' << std::to_string(percent * 100) << '%';
-		std::cout.flush();
-		return true;
-	}
 }
 #endif // !IO_HPP

@@ -15,8 +15,8 @@
 #include <unordered_map>
 #include <list>
 #include <unordered_map>
-#include "coroutine.hpp"
-#include "io.hpp"
+#include "include/coroutine.hpp"
+#include "include/io.hpp"
 #include "epoll_utility.hpp"
 #include "logger.hpp"
 #ifndef MAXARRSZ
@@ -88,10 +88,10 @@ private:
 	static inline int pipe_fd[2];
 
 	int decide_action(int fd);
-	void deal_with_file(int fd);
+	co_handle deal_with_file(int fd);
 	void deal_with_mesg(int fd);
 	void deal_with_gps(int fd);
-	mfcslib::co_handle deal_with_get_file(int fd);
+	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
 };
@@ -177,7 +177,7 @@ void receive_loop::loop()
 				switch (status_code)
 				{
 				case FILE_TYPE:
-					deal_with_file(react_fd);
+					tasks.emplace_back(deal_with_file(react_fd));	
 					break;
 				case MESSAGE_TYPE:
 					//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
@@ -263,13 +263,11 @@ int receive_loop::decide_action(int fd)
 	end:return -1;
 }
 
-void receive_loop::deal_with_file(int fd)
+co_handle receive_loop::deal_with_file(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
-	//char full_path[64]="./";
 	auto name_size = connection_storage[fd].buffer_for_pre_messsage.substr(2);
-	//msg += 2;
 	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
@@ -283,17 +281,22 @@ void receive_loop::deal_with_file(int fd)
 			auto bytesLeft = size;
 			while (true) {
 				auto currentRet = bufferForFile.read(fd, ret, bytesLeft);
-				if (currentRet < 0) continue;
+			#ifdef DEBUG
+				cout << "Return from read:" << currentRet << endl;
+			#endif // DEBUG
+				if (currentRet < 0) {
+					co_yield 1;
+					continue;
+				}
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
-				progress_bar(ret, size);
+				//progress_bar(ret, size);
 			#endif // DEBUG
 				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
 			if (bytesLeft <= 0) complete = true;
 			output_file.write(bufferForFile);
-
 		}
 		else {
 			auto bufferForFile = mfcslib::make_array<Byte>(MAXARRSZ);
@@ -303,7 +306,10 @@ void receive_loop::deal_with_file(int fd)
 				auto currentReturn = 0ll;
 				while (ret < (MAXARRSZ - 200'000)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
-					if (currentReturn < 0) continue;
+					if (currentReturn < 0) {
+						co_yield 1;
+						continue;
+					}
 					ret += currentReturn;
 					bytesWritten += currentReturn;
 				#ifdef DEBUG
@@ -324,18 +330,15 @@ void receive_loop::deal_with_file(int fd)
 		if (complete) {
 			LOG_INFO("Success on receiving file: ", name_size);
 	#ifdef DEBUG
-			cout << "\nSuccess on receiving file: " << name_size;
+			cout << "\nSuccess on receiving file: " << name_size << endl;
 	#endif // DEBUG
 		}
 		else {
 			LOG_ERROR("Not received complete file data.");
 	#ifdef DEBUG
-			cout << "\nNot received complete file data.\n";
+			cout << "\nNot received complete file data." << endl;
 	#endif // DEBUG
 		}
-	#ifdef DEBUG
-		cout.flush();
-	#endif // DEBUG
 	}
 	catch (const std::exception& e) {
 		LOG_ERROR("Client:", ADDRSTR(connection_storage[fd].address), e.what());
@@ -345,6 +348,8 @@ void receive_loop::deal_with_file(int fd)
 	#endif // DEBUG
 	}
 	connection_storage[fd].buffer_for_pre_messsage.clear();
+	epoll_instance.add_fd_or_event(fd, true, true, 0);
+	co_return;
 }
 
 void receive_loop::deal_with_mesg(int fd)
@@ -435,7 +440,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 	while (send_size > 0) {
 		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
 	#ifdef DEBUG
-		//cout << "Return from sendfile: " << ret << endl;
+		cout << "Return from sendfile: " << ret << endl;
 	#endif // DEBUG
 		if (ret <= 0)
 		{
@@ -446,8 +451,6 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 			else {
 				if (ret < 0) {
 					LOG_ERROR_C(connection_storage[fd].address);
-					//LOG_CLOSE(connection_storage[fd].address);
-					//close_connection(fd);
 				#ifdef DEBUG
 					perror("Sendfile failed");
 				#endif // DEBUG
@@ -459,7 +462,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		}
 		send_size -= ret;
 	#ifdef DEBUG
-		progress_bar((st.st_size - send_size), st.st_size);
+		//progress_bar((st.st_size - send_size), st.st_size);
 	#endif // DEBUG
 	}
 #ifdef DEBUG
