@@ -165,6 +165,21 @@ namespace mfcslib {
 				throw std::runtime_error(error_msg);
 			}
 		}
+		in_addr get_ip() {
+			return ip_port.sin_addr;
+		}
+		std::string get_ip_s() {
+			return inet_ntoa(ip_port.sin_addr);
+		}
+		auto get_port() {
+			return ntohs(ip_port.sin_port);
+		}
+		std::string get_port_s() {
+			return std::to_string(ntohs(ip_port.sin_port));
+		}
+		std::string get_ip_port() {
+			return get_ip_s() + ':' + get_port_s();
+		}
 		~Socket() {
 			this->close();
 		}

@@ -142,12 +142,11 @@ void receive_loop::loop()
 					if (accepted_fd < 0) {
 						if (errno != EAGAIN) {
 							LOG_ERROR_C(addr);
+						#ifdef DEBUG
 							perror("Accept failed");
-							exit(1);
+						#endif // DEBUG
 						}
-						else {
-							break;
-						}
+						else break;
 					}
 				#ifdef DEBUG
 					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
@@ -157,20 +156,6 @@ void receive_loop::loop()
 					epoll_instance.set_fd_no_block(accepted_fd);
 					connection_storage[accepted_fd].address = addr;
 				}
-			}
-			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-			#ifdef DEBUG
-				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
-			#endif // DEBUG
-				LOG_INFO("Disconnect from client: ",ADDRSTR(connection_storage[react_fd].address));
-				close_connection(react_fd);
-			}
-			else if (react_fd == pipe_fd[0]) {
-				int signal = 0;
-				recv(pipe_fd[0], &signal, sizeof signal, 0);
-				if (signal != SIGALRM) break;
-				LOG_INFO("Tick.");
-				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				auto status_code = decide_action(react_fd);
@@ -201,6 +186,20 @@ void receive_loop::loop()
 					connection_storage[react_fd].buffer_for_pre_messsage.clear();
 					break;
 				}
+			}
+			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+			#ifdef DEBUG
+				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
+			#endif // DEBUG
+				LOG_INFO("Disconnect from client: ",ADDRSTR(connection_storage[react_fd].address));
+				close_connection(react_fd);
+			}
+			else if (react_fd == pipe_fd[0]) {
+				int signal = 0;
+				recv(pipe_fd[0], &signal, sizeof signal, 0);
+				if (signal != SIGALRM) break;
+				LOG_INFO("Tick.");
+				alarm(ALARM_TIME);
 			}
 		}
 	co:
@@ -369,11 +368,12 @@ void receive_loop::deal_with_gps(int fd)
 	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
 	strcat(file_name, inet_ntoa(tmp_addr));
 	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
-		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);
-		if (addr_to_stream[tmp_addr.s_addr]->fail()) {
+		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);	
+		if (addr_to_stream[tmp_addr.s_addr]->fail()) [[unlikely]] {
 			LOG_ERROR("Error while creating gps file.");
 			LOG_CLOSE(connection_storage[fd].address);
 			close_connection(fd);
+			connection_storage[fd].buffer_for_pre_messsage.clear();
 			return;
 		}
 	}
@@ -385,6 +385,7 @@ void receive_loop::deal_with_gps(int fd)
 	cout.flush();
 #endif // DEBUG
 	connection_storage[fd].buffer_for_pre_messsage.clear();
+	epoll_instance.add_fd_or_event(fd, true, true, 0);
 }
 
 mfcslib::co_handle receive_loop::deal_with_get_file(int fd)

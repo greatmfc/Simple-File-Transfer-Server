@@ -23,7 +23,7 @@ The third number specifies a bug-fix-version which fix potential bugs in program
 The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
-#define VERSION "1.4.3.1"
-#define LAST_MODIFY 20230206L
+#define VERSION "1.5.3.1"
+#define LAST_MODIFY 20230207L
 
 #endif //! AM_H
