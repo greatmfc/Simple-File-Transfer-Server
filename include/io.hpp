@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <arpa/inet.h>
+#include <optional>
 #include "util.hpp"
 using std::out_of_range;
 using std::runtime_error;
@@ -177,11 +178,19 @@ namespace mfcslib {
 		std::string get_port_s() {
 			return std::to_string(ntohs(ip_port.sin_port));
 		}
-		std::string get_ip_port() {
+		std::string get_ip_port_s() {
 			return get_ip_s() + ':' + get_port_s();
 		}
 		~Socket() {
 			this->close();
+		}
+
+		mfcslib::Socket& operator=(mfcslib::Socket&& other) {
+			this->_fd = other._fd;
+			other._fd = -1;
+			this->ip_port = other.ip_port;
+			::memset(&other.ip_port, 0, sizeof(other.ip_port));
+			return *this;
 		}
 
 	protected:
@@ -219,12 +228,13 @@ namespace mfcslib {
 				throw runtime_error(strerror(errno));
 			}
 		}
-		Socket accpet() {
+		std::optional<Socket> accpet() {
 			sockaddr_in addrs{};
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
 			if (ret < 0) {
-				throw runtime_error(strerror(errno));
+				if (errno != EAGAIN) throw runtime_error(strerror(errno));
+				else return std::nullopt;
 			}
 			return Socket(ret, addrs);
 		}

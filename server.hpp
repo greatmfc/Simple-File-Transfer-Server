@@ -22,20 +22,22 @@
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
 #endif // !MAXARRSZ
-#define ADDRSTR(_addr) inet_ntoa(_addr.sin_addr)
 #define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
 #define LOG_DEBUG(...) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
 #define LOG_VERBOSE log::get_instance()->process_and_submit(LDEBUG,"in ",__FILE__,':',std::to_string(__LINE__))
 #define LOG_WARN(...) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
 #define LOG_ERROR(...) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
-#define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",ADDRSTR(_addr),' ',_msg)
-#define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",ADDRSTR(_addr),' ',_msg)
-#define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",ADDRSTR(_addr))
-#define LOG_CLOSE(_addr) LOG_INFO("Closing :",ADDRSTR(_addr))
-#define LOG_ERROR_C(_addr) LOG_ERROR("Client:",ADDRSTR(_addr),' ',strerror(errno))
+#define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",_addr,' ',_msg)
+#define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",_addr,' ',_msg)
+#define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",_addr)
+#define LOG_CLOSE(_addr) LOG_INFO("Closing :",_addr)
+#define LOG_ERROR_C(_addr) LOG_ERROR("Client:",_addr,' ',strerror(errno))
 #define GETERR strerror(errno)
 #define DEFAULT_PORT 9007
-#define ALARM_TIME 600
+#define ALARM_TIME 1200
+#define TIMEOUT 30000
+#define WAIT 15
+constexpr auto ori_val = TIMEOUT / WAIT;
 using std::cout;
 using std::endl;
 using std::to_string;
@@ -62,15 +64,23 @@ enum MyEnum
 };
 
 
-typedef struct data_info
+struct data_info :public mfcslib::Socket
 {
-	int reserved_var[8];
-	ssize_t bytes_to_deal_with;
-	char* buf;
-	string buffer_for_pre_messsage;
-	struct iovec iov;
-	sockaddr_in address;
-} data_info;
+	data_info& operator=(mfcslib::Socket&& other) {
+		mfcslib::Socket* pt_other = &other;
+		int* pt_fd = reinterpret_cast<int*>(pt_other);
+		sockaddr_in* pt_addr = reinterpret_cast<sockaddr_in*>(pt_fd + 1);
+		this->_fd = *pt_fd;
+		*pt_fd = -1;
+		this->ip_port = *pt_addr;
+		::memset(pt_addr, 0, sizeof(sockaddr_in));
+		return *this;
+	}
+	void empty_buf() {
+		requests.clear();
+	}
+	string requests;
+};
 
 class receive_loop
 {
@@ -82,7 +92,7 @@ public:
 
 private:
 	epoll_utility epoll_instance;
-	unordered_map<int, data_info> connection_storage;
+	unordered_map<int, data_info> connections;
 	unordered_map<unsigned int, ofstream*> addr_to_stream;
 	static inline bool running;
 	static inline int pipe_fd[2];
@@ -90,6 +100,7 @@ private:
 	int decide_action(int fd);
 	co_handle deal_with_file(int fd);
 	void deal_with_mesg(int fd);
+	[[deprecated("Might cause potential memory leaks.")]]
 	void deal_with_gps(int fd);
 	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
@@ -113,8 +124,6 @@ void receive_loop::loop()
 	}
 	mfcslib::ServerSocket localserver(DEFAULT_PORT);
 	running = true;
-	sockaddr_in addr{};
-	socklen_t len = sizeof addr;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
 	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
@@ -129,33 +138,51 @@ void receive_loop::loop()
 	while (running) {
 		int count = epoll_instance.wait_for_epoll(wait_time);
 		if (count <= 0) {
-			if (count < 0)	LOG_ERROR("Error in epoll_wait: ", strerror(errno));
+			if (count < 0) [[unlikely]] {
+				if (errno != EINTR) [[likely]]
+					LOG_ERROR("Error in epoll_wait: ", strerror(errno));
+				continue;
+			}
 			goto co;
 		}
 		for (int i = 0; i < count; ++i) {
 			int react_fd = epoll_instance.events[i].data.fd;
 
 			if (react_fd == socket_fd) {
-				while (true)
-				{
-					int accepted_fd = accept(socket_fd, (struct sockaddr*)&addr, &len);
-					if (accepted_fd < 0) {
-						if (errno != EAGAIN) {
-							LOG_ERROR_C(addr);
-						#ifdef DEBUG
-							perror("Accept failed");
-						#endif // DEBUG
-						}
-						else break;
+				try {
+					while (true) {
+						auto res = localserver.accpet();
+						if (!res) break;
+					#ifdef DEBUG
+						cout << "Accept from client:" << res.value().get_ip_s() << endl;
+					#endif // DEBUG
+						LOG_ACCEPT(res.value().get_ip_s());
+						auto accepted_fd = res.value().get_fd();
+						epoll_instance.add_fd_or_event(accepted_fd, true, true, 0);
+						epoll_instance.set_fd_no_block(accepted_fd);
+						connections[accepted_fd] = std::move(res.value());
 					}
-				#ifdef DEBUG
-					cout << "Accept from client:" << inet_ntoa(addr.sin_addr) << endl;
-				#endif // DEBUG
-					LOG_ACCEPT(addr);
-					epoll_instance.add_fd_or_event(accepted_fd, true, true, 0);
-					epoll_instance.set_fd_no_block(accepted_fd);
-					connection_storage[accepted_fd].address = addr;
 				}
+				catch (const std::exception& e) {
+					LOG_ERROR("Accept failed: ", strerror(errno));
+				#ifdef DEBUG
+					perror("Accept failed");
+				#endif // DEBUG
+				}
+			}
+			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
+			#ifdef DEBUG
+				cout << "Disconnect from client:" << connections[react_fd].get_ip_s() << endl;
+			#endif // DEBUG
+				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_s());
+				close_connection(react_fd);
+			}
+			else if (react_fd == pipe_fd[0]) {
+				int signal = 0;
+				recv(pipe_fd[0], &signal, sizeof signal, 0);
+				if (signal != SIGALRM) break;
+				LOG_INFO("Tick.");
+				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				auto status_code = decide_action(react_fd);
@@ -179,32 +206,18 @@ void receive_loop::loop()
 				default:
 					LOG_INFO(
 						"Closing:",
-						ADDRSTR(connection_storage[react_fd].address),
+						connections[react_fd].get_ip_s(),
 						" Received unknown request: ",
-						connection_storage[react_fd].buffer_for_pre_messsage);
+						connections[react_fd].requests);
 					close_connection(react_fd);
-					connection_storage[react_fd].buffer_for_pre_messsage.clear();
+					connections[react_fd].empty_buf();
 					break;
 				}
-			}
-			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
-			#ifdef DEBUG
-				cout << "Disconnect from client:" << inet_ntoa(connection_storage[react_fd].address.sin_addr) << endl;
-			#endif // DEBUG
-				LOG_INFO("Disconnect from client: ",ADDRSTR(connection_storage[react_fd].address));
-				close_connection(react_fd);
-			}
-			else if (react_fd == pipe_fd[0]) {
-				int signal = 0;
-				recv(pipe_fd[0], &signal, sizeof signal, 0);
-				if (signal != SIGALRM) break;
-				LOG_INFO("Tick.");
-				alarm(ALARM_TIME);
 			}
 		}
 	co:
 		if (!tasks.empty()) {
-			wait_time = 10;
+			wait_time = WAIT;
 			for (ssize_t i = tasks.size(); i-- > 0;) {
 				for (auto ite = tasks.begin(); ite != tasks.end(); ++ite) {
 					if (ite->done()) {
@@ -234,25 +247,25 @@ int receive_loop::decide_action(int fd)
 	ssize_t ret = 0;
 	char buffer[256]{ 0 };
 	while (true) {
-		ret = read(fd, buffer, 256);
+		ret = read(fd, buffer, 255);
 		if (ret <= 0) break;
-		connection_storage[fd].buffer_for_pre_messsage += buffer;
+		connections[fd].requests += buffer;
 		memset(buffer, 0, 256);
 	}
 	if (ret < 0 && errno != EAGAIN) {
-		LOG_ERROR_C(connection_storage[fd].address);
+		LOG_ERROR_C(connections[fd].get_ip_s());
 #ifdef DEBUG
 		perror("Something happened while read from client");
 #endif // DEBUG
 		goto end;
 	}
 #ifdef DEBUG
-	cout << "Read msg from client: " << connection_storage[fd].buffer_for_pre_messsage << endl;
+	cout << "Read msg from client: " << connections[fd].requests << endl;
 #endif // DEBUG
-	if (connection_storage[fd].buffer_for_pre_messsage.back() != '\n') {
-		connection_storage[fd].buffer_for_pre_messsage.push_back('\n');
+	if (connections[fd].requests.back() != '\n') {
+		connections[fd].requests.push_back('\n');
 	}
-	switch (connection_storage[fd].buffer_for_pre_messsage[0])
+	switch (connections[fd].requests[0])
 	{
 	case 'f':return FILE_TYPE;
 	case 'n':return GPS_TYPE;
@@ -266,14 +279,15 @@ co_handle receive_loop::deal_with_file(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
-	auto name_size = connection_storage[fd].buffer_for_pre_messsage.substr(2);
-	LOG_INFO("Receiving file from:", ADDRSTR(connection_storage[fd].address), ' ', name_size);
+	auto name_size = connections[fd].requests.substr(2);
+	LOG_INFO("Receiving file from:", connections[fd].get_ip_port_s(), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
 	auto name = "./" + name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
 		auto complete = false;
+		int max_times = ori_val;
 		if (size < MAXARRSZ) {
 			auto bufferForFile = mfcslib::make_array<Byte>(size);
 			auto ret = 0ll;
@@ -284,9 +298,16 @@ co_handle receive_loop::deal_with_file(int fd)
 				cout << "Return from read:" << currentRet << endl;
 			#endif // DEBUG
 				if (currentRet < 0) {
+					if (max_times-- <= 0) {
+					#ifdef DEBUG
+						cout << "Max times is:" << max_times << endl;
+					#endif // DEBUG
+						throw std::runtime_error("Connection timeout.");
+					}
 					co_yield 1;
 					continue;
 				}
+				max_times = ori_val;
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
@@ -306,9 +327,16 @@ co_handle receive_loop::deal_with_file(int fd)
 				while (ret < (MAXARRSZ - 200'000)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
 					if (currentReturn < 0) {
+						if (max_times-- <= 0) {
+						#ifdef DEBUG
+							cout << "Max times is:" << max_times << endl;
+						#endif // DEBUG
+							throw std::runtime_error("Connection timeout.");
+						}
 						co_yield 1;
 						continue;
 					}
+					max_times = ori_val;
 					ret += currentReturn;
 					bytesWritten += currentReturn;
 				#ifdef DEBUG
@@ -340,14 +368,17 @@ co_handle receive_loop::deal_with_file(int fd)
 		}
 	}
 	catch (const std::exception& e) {
-		LOG_ERROR("Client:", ADDRSTR(connection_storage[fd].address), e.what());
-		LOG_CLOSE(connection_storage[fd].address);
+		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
+		LOG_CLOSE(connections[fd].get_ip_s());
 	#ifdef DEBUG
-		cout << e.what() << '\n';
+		cout << e.what() << endl;
 	#endif // DEBUG
+		close_connection(fd);
+		goto end;
 	}
-	connection_storage[fd].buffer_for_pre_messsage.clear();
 	epoll_instance.add_fd_or_event(fd, true, true, 0);
+end:
+	connections[fd].requests.clear();
 	co_return;
 }
 
@@ -355,52 +386,52 @@ void receive_loop::deal_with_mesg(int fd)
 {
 	char code = '1';
 	write(fd, &code, sizeof code);
-	LOG_MSG(connection_storage[fd].address, &connection_storage[fd].buffer_for_pre_messsage[2]);
+	LOG_MSG(connections[fd].get_ip_s(), &connections[fd].requests[2]);
 #ifdef DEBUG
-	cout << "Success on receiving message: " << &connection_storage[fd].buffer_for_pre_messsage[2];
+	cout << "Success on receiving message: " << &connections[fd].requests[2];
 #endif // DEBUG
-	connection_storage[fd].buffer_for_pre_messsage.clear();
+	connections[fd].requests.clear();
 }
 
 void receive_loop::deal_with_gps(int fd)
 {
 	char file_name[32] = "gps_";
-	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
+	in_addr tmp_addr = connections[fd].get_ip();
 	strcat(file_name, inet_ntoa(tmp_addr));
 	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
 		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);	
 		if (addr_to_stream[tmp_addr.s_addr]->fail()) [[unlikely]] {
 			LOG_ERROR("Error while creating gps file.");
-			LOG_CLOSE(connection_storage[fd].address);
+			LOG_CLOSE(connections[fd].get_ip_s());
 			close_connection(fd);
-			connection_storage[fd].buffer_for_pre_messsage.clear();
+			connections[fd].requests.clear();
 			return;
 		}
 	}
-	*addr_to_stream[tmp_addr.s_addr] << connection_storage[fd].buffer_for_pre_messsage.substr(2);
+	*addr_to_stream[tmp_addr.s_addr] << connections[fd].requests.substr(2);
 	addr_to_stream[tmp_addr.s_addr]->flush();
-	LOG_MSG(connection_storage[fd].address, "GPS content");
+	LOG_MSG(connections[fd].get_ip_s(), "GPS content");
 #ifdef DEBUG
-	cout << "Success on receiving GPS: " << &connection_storage[fd].buffer_for_pre_messsage[2];
+	cout << "Success on receiving GPS: " << &connections[fd].requests[2];
 	cout.flush();
 #endif // DEBUG
-	connection_storage[fd].buffer_for_pre_messsage.clear();
+	connections[fd].requests.clear();
 	epoll_instance.add_fd_or_event(fd, true, true, 0);
 }
 
 mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 {
 	LOG_INFO("Receive file request from:",
-		ADDRSTR(connection_storage[fd].address), ' ',
-		&connection_storage[fd].buffer_for_pre_messsage[2]);
+		connections[fd].get_ip_s(), ' ',
+		&connections[fd].requests[2]);
 	string full_path("./");
-	full_path += &connection_storage[fd].buffer_for_pre_messsage[2];
+	full_path += &connections[fd].requests[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	struct stat st;
 	stat(full_path.c_str(), &st);
 	if (access(full_path.c_str(), R_OK) != 0 || !S_ISREG(st.st_mode)) {
 		LOG_ERROR("No access to request file or it's not regular file.");
-		connection_storage[fd].buffer_for_pre_messsage.clear();
+		connections[fd].requests.clear();
 		char code = '0';
 		write(fd, &code, sizeof code);
 		co_return;
@@ -411,7 +442,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		LOG_ERROR("Open requested file fail: ", strerror(errno));
 		char code = '0';
 		write(fd, &code, sizeof code);
-		connection_storage[fd].buffer_for_pre_messsage.clear();
+		connections[fd].requests.clear();
 		co_return;
 	}
 	fstat(file_fd, &st);
@@ -430,10 +461,10 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		cout << "Receive flag from server failed.\nIn line: ";
 		cout << __LINE__ << endl;
 #endif // DEBUG
-		LOG_ERROR_C(connection_storage[fd].address);
-		LOG_CLOSE(connection_storage[fd].address);
+		LOG_ERROR_C(connections[fd].get_ip_s());
+		LOG_CLOSE(connections[fd].get_ip_s());
 		close_connection(fd);
-		connection_storage[fd].buffer_for_pre_messsage.clear();
+		connections[fd].requests.clear();
 		co_return;
 	}
 	off_t off = 0;
@@ -451,7 +482,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 			}
 			else {
 				if (ret < 0) {
-					LOG_ERROR_C(connection_storage[fd].address);
+					LOG_ERROR_C(connections[fd].get_ip_s());
 				#ifdef DEBUG
 					perror("Sendfile failed");
 				#endif // DEBUG
@@ -469,15 +500,16 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 #ifdef DEBUG
 	cout << "\nFinishing file sending." << endl;
 #endif // DEBUG
-	LOG_INFO("Success on sending file to client:", ADDRSTR(connection_storage[fd].address));
-end:connection_storage[fd].buffer_for_pre_messsage.clear();
+	LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
+end:
+	connections[fd].requests.clear();
 	epoll_instance.add_fd_or_event(fd, true, true, 0);
 	co_return;
 }
 
 void receive_loop::close_connection(int fd)
 {
-	in_addr tmp_addr = connection_storage[fd].address.sin_addr;
+	in_addr tmp_addr = connections[fd].get_ip();
 	if (addr_to_stream[tmp_addr.s_addr] != nullptr){
 		if (addr_to_stream[tmp_addr.s_addr]->is_open()) {
 			addr_to_stream[tmp_addr.s_addr]->close();
