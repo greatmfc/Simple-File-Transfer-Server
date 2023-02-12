@@ -9,6 +9,7 @@ namespace mfcslib {
 	public:
 		struct promise_type;
 		using handle_type = std::coroutine_handle<promise_type>;
+		co_handle() = default;
 		co_handle(handle_type h) :m_co(h) {}
 		co_handle(const co_handle&) = delete;
 		co_handle(co_handle&& s) :m_co(s.m_co) {
@@ -17,11 +18,13 @@ namespace mfcslib {
 		~co_handle() {
 			if (m_co) {
 				m_co.destroy();
+				m_co = nullptr;
 			}
 		}
 		co_handle& operator=(const co_handle&) = delete;
 		co_handle& operator=(co_handle&& s)
 		{
+			if (m_co) m_co.destroy();
 			m_co = s.m_co;
 			s.m_co = nullptr;
 			return *this;
@@ -31,6 +34,15 @@ namespace mfcslib {
 		}
 		bool done() {
 			return m_co.done();
+		}
+		bool empty() {
+			return !m_co;
+		}
+		void destroy() {
+			if (m_co) {
+				m_co.destroy();
+				m_co = nullptr;
+			}
 		}
 
 		struct promise_type {

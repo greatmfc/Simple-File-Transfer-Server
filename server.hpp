@@ -36,8 +36,8 @@
 #define DEFAULT_PORT 9007
 #define ALARM_TIME 1200
 #define TIMEOUT 30000
-#define WAIT 15
-constexpr auto ori_val = TIMEOUT / WAIT;
+//#define WAIT 15
+//constexpr auto ori_val = TIMEOUT / WAIT;
 using std::cout;
 using std::endl;
 using std::to_string;
@@ -80,6 +80,11 @@ struct data_info :public mfcslib::Socket
 		requests.clear();
 	}
 	string requests;
+	co_handle task;
+	~data_info() {
+		requests.clear();
+		task.destroy();
+	}
 };
 
 class receive_loop
@@ -131,19 +136,15 @@ void receive_loop::loop()
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME);
 	LOG_INFO("Server starts.");
-	int wait_time = -1;
-	std::list<mfcslib::co_handle> tasks;
+	//std::list<mfcslib::co_handle> tasks;
 	//thread_pool tp;
 	//tp.init_pool();
 	while (running) {
-		int count = epoll_instance.wait_for_epoll(wait_time);
-		if (count <= 0) {
-			if (count < 0) [[unlikely]] {
-				if (errno != EINTR) [[likely]]
-					LOG_ERROR("Error in epoll_wait: ", strerror(errno));
-				continue;
-			}
-			goto co;
+		int count = epoll_instance.wait_for_epoll(-1);
+		if (count < 0) [[unlikely]] {
+			if (errno != EINTR) [[unlikely]]
+				LOG_ERROR("Error in epoll_wait: ", strerror(errno));
+			continue;
 		}
 		for (int i = 0; i < count; ++i) {
 			int react_fd = epoll_instance.events[i].data.fd;
@@ -158,7 +159,7 @@ void receive_loop::loop()
 					#endif // DEBUG
 						LOG_ACCEPT(res.value().get_ip_s());
 						auto accepted_fd = res.value().get_fd();
-						epoll_instance.add_fd_or_event(accepted_fd, true, true, 0);
+						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
 						connections[accepted_fd] = std::move(res.value());
 					}
@@ -185,36 +186,49 @@ void receive_loop::loop()
 				alarm(ALARM_TIME);
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				auto status_code = decide_action(react_fd);
-				switch (status_code)
-				{
-				case FILE_TYPE:
-					tasks.emplace_back(deal_with_file(react_fd));	
-					break;
-				case MESSAGE_TYPE:
-					//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
-					deal_with_mesg(react_fd);
-					break;
-				case GPS_TYPE:
-					//tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
-					deal_with_gps(react_fd);
-					break;
-				case GET_TYPE:
-					//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
-					tasks.emplace_back(deal_with_get_file(react_fd));
-					break;
-				default:
-					LOG_INFO(
-						"Closing:",
-						connections[react_fd].get_ip_s(),
-						" Received unknown request: ",
-						connections[react_fd].requests);
-					close_connection(react_fd);
-					connections[react_fd].empty_buf();
-					break;
+				auto& di=connections[react_fd];
+				co_handle& task = connections[react_fd].task;
+				if (task.empty() || task.done()) {
+					switch (decide_action(react_fd))
+					{
+					case FILE_TYPE:
+						task = deal_with_file(react_fd);
+						//tasks.emplace_back(deal_with_file(react_fd));
+						break;
+					case MESSAGE_TYPE:
+						//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
+						deal_with_mesg(react_fd);
+						break;
+					case GPS_TYPE:
+						//tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
+						deal_with_gps(react_fd);
+						break;
+					case GET_TYPE:
+						//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
+						//tasks.emplace_back(deal_with_get_file(react_fd));
+						task = deal_with_get_file(react_fd);
+						break;
+					default:
+						LOG_INFO(
+							"Closing:",
+							di.get_ip_s(),
+							" Received unknown request: ",
+							di.requests);
+						close_connection(react_fd);
+						di.empty_buf();
+						break;
+					}
+				}
+				else task.resume();
+			}
+			else if (epoll_instance.events[i].events & EPOLLOUT) {
+				co_handle& task = connections[react_fd].task;
+				if (!(task.empty() || task.done())) {
+					task.resume();
 				}
 			}
 		}
+		/*
 	co:
 		if (!tasks.empty()) {
 			wait_time = WAIT;
@@ -231,6 +245,7 @@ void receive_loop::loop()
 		else {
 			wait_time = -1;
 		}
+		*/
 	}
 	//tp.shutdown_pool();
 	for (auto& [addr, stream] : addr_to_stream) {
@@ -246,10 +261,11 @@ int receive_loop::decide_action(int fd)
 {
 	ssize_t ret = 0;
 	char buffer[256]{ 0 };
+	string& request = connections[fd].requests;
 	while (true) {
 		ret = read(fd, buffer, 255);
 		if (ret <= 0) break;
-		connections[fd].requests += buffer;
+		request += buffer;
 		memset(buffer, 0, 256);
 	}
 	if (ret < 0 && errno != EAGAIN) {
@@ -260,12 +276,12 @@ int receive_loop::decide_action(int fd)
 		goto end;
 	}
 #ifdef DEBUG
-	cout << "Read msg from client: " << connections[fd].requests << endl;
+	cout << "Read msg from client: " << request << endl;
 #endif // DEBUG
-	if (connections[fd].requests.back() != '\n') {
-		connections[fd].requests.push_back('\n');
+	if (request.back() != '\n') {
+		request.push_back('\n');
 	}
-	switch (connections[fd].requests[0])
+	switch (request[0])
 	{
 	case 'f':return FILE_TYPE;
 	case 'n':return GPS_TYPE;
@@ -280,6 +296,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
 	auto name_size = connections[fd].requests.substr(2);
+	connections[fd].requests.clear();
 	LOG_INFO("Receiving file from:", connections[fd].get_ip_port_s(), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
@@ -287,7 +304,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
 		auto complete = false;
-		int max_times = ori_val;
+		//int max_times = ori_val;
 		if (size < MAXARRSZ) {
 			auto bufferForFile = mfcslib::make_array<Byte>(size);
 			auto ret = 0ll;
@@ -298,16 +315,18 @@ co_handle receive_loop::deal_with_file(int fd)
 				cout << "Return from read:" << currentRet << endl;
 			#endif // DEBUG
 				if (currentRet < 0) {
+					/*
 					if (max_times-- <= 0) {
 					#ifdef DEBUG
 						cout << "Max times is:" << max_times << endl;
 					#endif // DEBUG
 						throw std::runtime_error("Connection timeout.");
 					}
+					*/
 					co_yield 1;
 					continue;
 				}
-				max_times = ori_val;
+				//max_times = ori_val;
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
@@ -327,16 +346,18 @@ co_handle receive_loop::deal_with_file(int fd)
 				while (ret < (MAXARRSZ - 200'000)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
 					if (currentReturn < 0) {
+						/*
 						if (max_times-- <= 0) {
 						#ifdef DEBUG
 							cout << "Max times is:" << max_times << endl;
 						#endif // DEBUG
 							throw std::runtime_error("Connection timeout.");
 						}
+						*/
 						co_yield 1;
 						continue;
 					}
-					max_times = ori_val;
+					//max_times = ori_val;
 					ret += currentReturn;
 					bytesWritten += currentReturn;
 				#ifdef DEBUG
@@ -374,11 +395,11 @@ co_handle receive_loop::deal_with_file(int fd)
 		cout << e.what() << endl;
 	#endif // DEBUG
 		close_connection(fd);
-		goto end;
+		//goto end;
 	}
-	epoll_instance.add_fd_or_event(fd, true, true, 0);
-end:
-	connections[fd].requests.clear();
+	//epoll_instance.add_fd_or_event(fd, true, true, 0);
+//end:
+	//connections[fd].requests.clear();
 	co_return;
 }
 
@@ -416,22 +437,23 @@ void receive_loop::deal_with_gps(int fd)
 	cout.flush();
 #endif // DEBUG
 	connections[fd].requests.clear();
-	epoll_instance.add_fd_or_event(fd, true, true, 0);
+	//epoll_instance.add_fd_or_event(fd, true, true, 0);
 }
 
 mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 {
+	string& request = connections[fd].requests;
 	LOG_INFO("Receive file request from:",
 		connections[fd].get_ip_s(), ' ',
-		&connections[fd].requests[2]);
+		&request[2]);
 	string full_path("./");
-	full_path += &connections[fd].requests[2];
+	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	struct stat st;
 	stat(full_path.c_str(), &st);
 	if (access(full_path.c_str(), R_OK) != 0 || !S_ISREG(st.st_mode)) {
 		LOG_ERROR("No access to request file or it's not regular file.");
-		connections[fd].requests.clear();
+		request.clear();
 		char code = '0';
 		write(fd, &code, sizeof code);
 		co_return;
@@ -442,7 +464,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		LOG_ERROR("Open requested file fail: ", strerror(errno));
 		char code = '0';
 		write(fd, &code, sizeof code);
-		connections[fd].requests.clear();
+		request.clear();
 		co_return;
 	}
 	fstat(file_fd, &st);
@@ -464,9 +486,10 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		LOG_ERROR_C(connections[fd].get_ip_s());
 		LOG_CLOSE(connections[fd].get_ip_s());
 		close_connection(fd);
-		connections[fd].requests.clear();
+		request.clear();
 		co_return;
 	}
+	request.clear();
 	off_t off = 0;
 	uintmax_t send_size = st.st_size;
 	while (send_size > 0) {
@@ -488,7 +511,8 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 				#endif // DEBUG
 				}
 				LOG_ERROR("Not received complete file data.");
-				goto end;
+				co_return;
+				//goto end;
 			}
 			//break;
 		}
@@ -501,9 +525,9 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 	cout << "\nFinishing file sending." << endl;
 #endif // DEBUG
 	LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
-end:
-	connections[fd].requests.clear();
-	epoll_instance.add_fd_or_event(fd, true, true, 0);
+//end:
+	//connections[fd].requests.clear();
+	//epoll_instance.add_fd_or_event(fd, true, true, 0);
 	co_return;
 }
 
@@ -518,6 +542,7 @@ void receive_loop::close_connection(int fd)
 		addr_to_stream[tmp_addr.s_addr] = nullptr;
 	}
 	epoll_instance.remove_fd_from_epoll(fd);
+	connections.erase(fd);
 }
 
 void receive_loop::alarm_handler(int sig)
