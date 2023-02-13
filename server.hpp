@@ -177,6 +177,7 @@ void receive_loop::loop()
 			#endif // DEBUG
 				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_s());
 				close_connection(react_fd);
+				connections.erase(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
 				int signal = 0;
@@ -216,6 +217,7 @@ void receive_loop::loop()
 							di.requests);
 						close_connection(react_fd);
 						di.empty_buf();
+						connections.erase(react_fd);
 						break;
 					}
 				}
@@ -303,8 +305,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	auto name = "./" + name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
-		auto complete = false;
-		//int max_times = ori_val;
+		//auto complete = false;
 		if (size < MAXARRSZ) {
 			auto bufferForFile = mfcslib::make_array<Byte>(size);
 			auto ret = 0ll;
@@ -315,18 +316,9 @@ co_handle receive_loop::deal_with_file(int fd)
 				cout << "Return from read:" << currentRet << endl;
 			#endif // DEBUG
 				if (currentRet < 0) {
-					/*
-					if (max_times-- <= 0) {
-					#ifdef DEBUG
-						cout << "Max times is:" << max_times << endl;
-					#endif // DEBUG
-						throw std::runtime_error("Connection timeout.");
-					}
-					*/
 					co_yield 1;
 					continue;
 				}
-				//max_times = ori_val;
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
@@ -334,7 +326,7 @@ co_handle receive_loop::deal_with_file(int fd)
 			#endif // DEBUG
 				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
-			if (bytesLeft <= 0) complete = true;
+			//if (bytesLeft <= 0) complete = true;
 			output_file.write(bufferForFile);
 		}
 		else {
@@ -346,18 +338,9 @@ co_handle receive_loop::deal_with_file(int fd)
 				while (ret < (MAXARRSZ - 200'000)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
 					if (currentReturn < 0) {
-						/*
-						if (max_times-- <= 0) {
-						#ifdef DEBUG
-							cout << "Max times is:" << max_times << endl;
-						#endif // DEBUG
-							throw std::runtime_error("Connection timeout.");
-						}
-						*/
 						co_yield 1;
 						continue;
 					}
-					//max_times = ori_val;
 					ret += currentReturn;
 					bytesWritten += currentReturn;
 				#ifdef DEBUG
@@ -367,7 +350,7 @@ co_handle receive_loop::deal_with_file(int fd)
 				}
 				output_file.write(bufferForFile, 0, ret);
 				if (bytesWritten >= size) {
-					complete = true;
+					//complete = true;
 					break;
 				}
 				if (currentReturn == 0) break;
@@ -375,6 +358,11 @@ co_handle receive_loop::deal_with_file(int fd)
 				ret = 0;
 			}
 		}
+		LOG_INFO("Success on receiving file: ", name_size);
+	#ifdef DEBUG
+		cout << "\nSuccess on receiving file: " << name_size << endl;
+	#endif // DEBUG
+		/*
 		if (complete) {
 			LOG_INFO("Success on receiving file: ", name_size);
 	#ifdef DEBUG
@@ -387,12 +375,15 @@ co_handle receive_loop::deal_with_file(int fd)
 			cout << "\nNot received complete file data." << endl;
 	#endif // DEBUG
 		}
+		*/
 	}
 	catch (const std::exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
+		LOG_ERROR("Not received complete file data.");
 		LOG_CLOSE(connections[fd].get_ip_s());
 	#ifdef DEBUG
 		cout << e.what() << endl;
+		cout << "Not received complete file data." << endl;
 	#endif // DEBUG
 		close_connection(fd);
 		//goto end;
@@ -449,85 +440,72 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 	string full_path("./");
 	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
-	struct stat st;
-	stat(full_path.c_str(), &st);
-	if (access(full_path.c_str(), R_OK) != 0 || !S_ISREG(st.st_mode)) {
-		LOG_ERROR("No access to request file or it's not regular file.");
-		request.clear();
-		char code = '0';
-		write(fd, &code, sizeof code);
-		co_return;
+	request.clear();
+	try {
+		File requested_file(full_path, false, O_RDONLY); //throw runtime_error
+		string react_msg("/");
+		react_msg += requested_file.size_string();
+		write(fd, react_msg.c_str(), react_msg.size() + 1);
+		ssize_t ret = 0;
+		char flag = '0';
+		while (1) {
+			ret = recv(fd, &flag, sizeof(flag), 0);
+			if (ret >= 0 || errno != EAGAIN) break;
+			else co_yield 1;
+		}
+		if (flag != '1' || ret <= 0)
+			throw std::domain_error("Receive flag failed.");
+		off_t off = 0;
+		uintmax_t send_size = requested_file.size();
+		int file_fd = requested_file.get_fd();
+		while (send_size > 0) {
+			ssize_t ret = sendfile(fd, file_fd, &off, send_size);
+		#ifdef DEBUG
+			cout << "Return from sendfile: " << ret << endl;
+		#endif // DEBUG
+			if (ret <= 0)
+			{
+				if (errno == EAGAIN) {
+					co_yield 1;
+					continue;
+				}
+				else {
+					if (ret < 0) {
+						LOG_ERROR_C(connections[fd].get_ip_s());
+					#ifdef DEBUG
+						perror("Sendfile failed");
+					#endif // DEBUG
+					}
+					LOG_ERROR("Not received complete file data.");
+					co_return;
+				}
+			}
+			send_size -= ret;
+		#ifdef DEBUG
+			//progress_bar((st.st_size - send_size), st.st_size);
+		#endif // DEBUG
+		}
+	#ifdef DEBUG
+		cout << "\nFinishing file sending." << endl;
+	#endif // DEBUG
+		LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
 	}
-
-	int file_fd = open(full_path.c_str(), O_RDONLY);
-	if (file_fd < 0) {
-		LOG_ERROR("Open requested file fail: ", strerror(errno));
-		char code = '0';
-		write(fd, &code, sizeof code);
-		request.clear();
-		co_return;
-	}
-	fstat(file_fd, &st);
-	string react_msg(&full_path.c_str()[2]);
-	react_msg += '/' + to_string(st.st_size);
-	write(fd, react_msg.c_str(), react_msg.size());
-	ssize_t ret = 0;
-	char flag = '0';
-	while (1) {
-		ret = recv(fd, &flag, sizeof(flag), 0);
-		if (ret >= 0 || errno != EAGAIN) break;
-		else co_yield 1;
-	}
-	if (flag != '1' || ret <= 0) {
-#ifdef DEBUG
-		cout << "Receive flag from server failed.\nIn line: ";
-		cout << __LINE__ << endl;
-#endif // DEBUG
-		LOG_ERROR_C(connections[fd].get_ip_s());
+	catch (const std::domain_error& e) {
+	#ifdef DEBUG
+		cout << e.what() << endl;
+	#endif // DEBUG
+		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
 		LOG_CLOSE(connections[fd].get_ip_s());
 		close_connection(fd);
-		request.clear();
-		co_return;
 	}
-	request.clear();
-	off_t off = 0;
-	uintmax_t send_size = st.st_size;
-	while (send_size > 0) {
-		ssize_t ret = sendfile(fd, file_fd, &off, send_size);
+	catch (const std::runtime_error& e) {
 	#ifdef DEBUG
-		cout << "Return from sendfile: " << ret << endl;
+		cout << e.what() << endl;
 	#endif // DEBUG
-		if (ret <= 0)
-		{
-			if (errno == EAGAIN) {
-				co_yield 1;
-				continue;
-			}
-			else {
-				if (ret < 0) {
-					LOG_ERROR_C(connections[fd].get_ip_s());
-				#ifdef DEBUG
-					perror("Sendfile failed");
-				#endif // DEBUG
-				}
-				LOG_ERROR("Not received complete file data.");
-				co_return;
-				//goto end;
-			}
-			//break;
-		}
-		send_size -= ret;
-	#ifdef DEBUG
-		//progress_bar((st.st_size - send_size), st.st_size);
-	#endif // DEBUG
+		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
+		char code = '0';
+		write(fd, &code, sizeof code);
 	}
-#ifdef DEBUG
-	cout << "\nFinishing file sending." << endl;
-#endif // DEBUG
-	LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
-//end:
-	//connections[fd].requests.clear();
-	//epoll_instance.add_fd_or_event(fd, true, true, 0);
 	co_return;
 }
 
@@ -542,7 +520,7 @@ void receive_loop::close_connection(int fd)
 		addr_to_stream[tmp_addr.s_addr] = nullptr;
 	}
 	epoll_instance.remove_fd_from_epoll(fd);
-	connections.erase(fd);
+	//connections.erase(fd);
 }
 
 void receive_loop::alarm_handler(int sig)

@@ -14,6 +14,11 @@ using std::string;
 using namespace std::filesystem;
 using Byte = char;
 namespace mfcslib {
+	enum {
+		RDONLY,
+		WRONLY,
+		RDWR
+	};
 	class basic_io
 	{
 	protected:
@@ -63,7 +68,10 @@ namespace mfcslib {
 			return ret;
 		}
 		void close() {
-			this->~basic_io();
+			if (_fd > 0) {
+				::close(_fd);
+				_fd = -1;
+			}
 		}
 		auto get_fd() {
 			return _fd;
@@ -88,14 +96,14 @@ namespace mfcslib {
 		File() = default;
 		File(const File&) = delete;
 		auto open(const string& file, bool trunc, int rwmode) {
-			int flag = O_CREAT;
+			int flag = 0;
 			switch (rwmode)
 			{
 			case 0: flag |= O_RDONLY; break;
 			case 1: flag |= O_WRONLY; break;
 			default:flag |= O_RDWR; break;
 			}
-			if (trunc) flag |= O_TRUNC;
+			if (trunc) flag |= O_TRUNC | O_CREAT;
 			else flag |= O_APPEND;
 			_fd = ::open(file.c_str(), flag, 0644);
 			if (_fd < 0) throw runtime_error(strerror(errno));
@@ -152,7 +160,6 @@ namespace mfcslib {
 		Socket(const string& ip, uint16_t port) {
 			memset(&ip_port, 0, sizeof ip_port);
 			ip_port.sin_family = AF_INET;
-			//unsigned long target_addr = 0;
 			ip_port.sin_addr.s_addr = inet_addr(ip.c_str());
 			if (ip_port.sin_addr.s_addr == INADDR_NONE) {
 				throw std::invalid_argument("Invalid address:");
