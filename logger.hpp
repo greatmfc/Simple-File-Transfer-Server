@@ -28,28 +28,30 @@ public:
 
 	template<typename ...Args>
 	void process_and_submit(log_enum type, const Args& ...args) {
-		timespec_get(&ts, TIME_UTC);
-		char tmp[32]{ 0 };
-		auto currentTime = localtime(&ts.tv_sec);
-		if (day != currentTime->tm_mday) {
-			log_file.close();
-			init_log();
+		if (keep_log) {
+			timespec_get(&ts, TIME_UTC);
+			char tmp[32]{ 0 };
+			auto currentTime = localtime(&ts.tv_sec);
+			if (day != currentTime->tm_mday) {
+				log_file.close();
+				init_log();
+			}
+			strftime(tmp, 32, "%F %T.", currentTime);
+			string content(tmp);
+			content += std::to_string(ts.tv_nsec).substr(0, 6);
+			switch (type)
+			{
+			case LINFO:content += " [Info]:"; break;
+			case LDEBUG:content += " [Debug]:"; break;
+			case LWARN:content += " [Warn]:"; break;
+			case LERROR:content += " [Error]:"; break;
+			}
+			content = (content + ... + args);
+			if (content.back() != '\n') {
+				content += '\n';
+			}
+			m_submit_missions(content);
 		}
-		strftime(tmp, 32, "%F %T.", currentTime);
-		string content(tmp);
-		content += std::to_string(ts.tv_nsec).substr(0,6);
-		switch (type)
-		{
-		case LINFO:content += " [Info]:"; break;
-		case LDEBUG:content += " [Debug]:"; break;
-		case LWARN:content += " [Warn]:"; break;
-		case LERROR:content += " [Error]:"; break;
-		}
-		content = (content + ... + args);
-		if (content.back() != '\n') {
-			content += '\n';
-		}
-		m_submit_missions(content);
 	}
 
 	void init_log() {
@@ -80,10 +82,8 @@ private:
 	bool keep_log = true;
 	char log_name[64] = { 0 };
 	void m_submit_missions(const string& ct) {
-		if (keep_log) {
-			log_file << ct;
-			log_file.flush();
-		}
+		log_file << ct;
+		log_file.flush();
 	}
 };
 #endif // !LOGGER_HPP

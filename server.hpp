@@ -443,8 +443,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 	request.clear();
 	try {
 		File requested_file(full_path, false, O_RDONLY); //throw runtime_error
-		string react_msg("/");
-		react_msg += requested_file.size_string();
+		string react_msg("/" + requested_file.size_string());
 		write(fd, react_msg.c_str(), react_msg.size() + 1);
 		ssize_t ret = 0;
 		char flag = '0';
@@ -458,10 +457,11 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		off_t off = 0;
 		uintmax_t send_size = requested_file.size();
 		int file_fd = requested_file.get_fd();
+		auto file_sz = requested_file.size();
 		while (send_size > 0) {
 			ssize_t ret = sendfile(fd, file_fd, &off, send_size);
 		#ifdef DEBUG
-			cout << "Return from sendfile: " << ret << endl;
+			//cout << "Return from sendfile: " << ret << endl;
 		#endif // DEBUG
 			if (ret <= 0)
 			{
@@ -482,7 +482,8 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 			}
 			send_size -= ret;
 		#ifdef DEBUG
-			//progress_bar((st.st_size - send_size), st.st_size);
+			//cout << "Bytes left: " << send_size << endl;
+			progress_bar((file_sz - send_size), file_sz);
 		#endif // DEBUG
 		}
 	#ifdef DEBUG
