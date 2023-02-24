@@ -34,7 +34,7 @@
 #define LOG_ERROR_C(_addr) LOG_ERROR("Client:",_addr,' ',strerror(errno))
 #define GETERR strerror(errno)
 #define DEFAULT_PORT 9007
-#define ALARM_TIME 1200
+#define ALARM_TIME 300s
 #define TIMEOUT 30000
 //#define WAIT 15
 //constexpr auto ori_val = TIMEOUT / WAIT;
@@ -94,6 +94,7 @@ public:
 	~receive_loop() = default;
 	static void stop_loop(int sig);
 	void loop();
+	friend timer<int>;
 
 private:
 	epoll_utility epoll_instance;
@@ -134,8 +135,9 @@ void receive_loop::loop()
 	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
 	epoll_instance.add_fd_or_event(pipe_fd[0], false, true, 0);
 	signal(SIGALRM, alarm_handler);
-	alarm(ALARM_TIME);
+	alarm(ALARM_TIME.count());
 	LOG_INFO("Server starts.");
+	mfcslib::timer<int> clock(ALARM_TIME);
 	//std::list<mfcslib::co_handle> tasks;
 	//thread_pool tp;
 	//tp.init_pool();
@@ -162,6 +164,7 @@ void receive_loop::loop()
 						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
 						connections[accepted_fd] = std::move(res.value());
+						clock.insert(accepted_fd);
 					}
 				}
 				catch (const std::exception& e) {
@@ -178,17 +181,25 @@ void receive_loop::loop()
 				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_s());
 				close_connection(react_fd);
 				connections.erase(react_fd);
+				clock.erase_value(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
 				int signal = 0;
 				recv(pipe_fd[0], &signal, sizeof signal, 0);
 				if (signal != SIGALRM) break;
 				LOG_INFO("Tick.");
-				alarm(ALARM_TIME);
+				alarm(ALARM_TIME.count());
+				auto timeout_list = clock.clear_expired();
+				for (const auto& i : timeout_list) {
+					close_connection(i);
+					LOG_INFO("Timeout client: ", connections[i].get_ip_s());
+					connections.erase(i);
+				}
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				auto& di=connections[react_fd];
 				co_handle& task = connections[react_fd].task;
+				clock.update_value(react_fd);
 				if (task.empty() || task.done()) {
 					switch (decide_action(react_fd))
 					{
@@ -217,6 +228,7 @@ void receive_loop::loop()
 							di.requests);
 						close_connection(react_fd);
 						di.empty_buf();
+						clock.erase_value(react_fd);
 						connections.erase(react_fd);
 						break;
 					}
@@ -225,29 +237,12 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & EPOLLOUT) {
 				co_handle& task = connections[react_fd].task;
+				clock.update_value(react_fd);
 				if (!(task.empty() || task.done())) {
 					task.resume();
 				}
 			}
 		}
-		/*
-	co:
-		if (!tasks.empty()) {
-			wait_time = WAIT;
-			for (ssize_t i = tasks.size(); i-- > 0;) {
-				for (auto ite = tasks.begin(); ite != tasks.end(); ++ite) {
-					if (ite->done()) {
-						tasks.erase(ite);
-						break;
-					}
-					else ite->resume();
-				}
-			}
-		}
-		else {
-			wait_time = -1;
-		}
-		*/
 	}
 	//tp.shutdown_pool();
 	for (auto& [addr, stream] : addr_to_stream) {

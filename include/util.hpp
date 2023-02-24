@@ -4,8 +4,14 @@
 #include <cstring>
 #include <unistd.h>
 #include <array>
+#include <chrono>
+#include <unordered_map>
+#include <iostream>
+#include <vector>
 using std::out_of_range;
 using std::runtime_error;
+namespace sc = std::chrono;
+using namespace std::chrono_literals;
 namespace mfcslib {
 	template<typename _Type>
 	class TypeArray
@@ -14,7 +20,7 @@ namespace mfcslib {
 	public:
 		TypeArray() = delete;
 		TypeArray(const TypeArray& arg) = delete;
-		~TypeArray() {
+		constexpr ~TypeArray() {
 			if (_DATA != nullptr) {
 				delete[] _DATA;
 				_SIZE = 0;
@@ -146,8 +152,48 @@ namespace mfcslib {
 	private:
 		intmax_t data[N];
 	};
+
+	template<typename T>
+	class timer
+	{
+	public:
+		timer() = default;
+		timer(const sc::seconds& time) :_interval(time) {}
+		~timer() = default;
+		void setup_interval(const sc::seconds& time) {
+			_interval = time;
+		}
+		void insert(const T& value) {
+			_data[value] = sc::system_clock::now();
+		}
+		void erase_value(const T& value) {
+			_data.erase(value);
+		}
+		std::vector<T> clear_expired() {
+			auto cur_time = sc::system_clock::now();
+			std::vector<T> res;
+			for (auto ite = _data.begin(); ite != _data.end();) {
+				if (cur_time - ite->second >= _interval) {
+					res.emplace_back(ite->first);
+					_data.erase(ite++);
+					continue;
+				}
+				break;
+			}
+			return res;
+		}
+		void update_value(const T& value) {
+			_data.erase(value);
+			_data[value] = sc::system_clock::now();
+		}
+
+	private:
+		std::unordered_map<T, sc::time_point<sc::system_clock>> _data;
+		sc::seconds _interval = 300s;
+	};
+
 }
-#define _var auto&s
+#define _var const auto&s
 #define _in :
 #define _range(_) mfcslib::Range<(uint16_t)_>()
 #endif // !UTIL_HPP
