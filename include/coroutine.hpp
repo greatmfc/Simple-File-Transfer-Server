@@ -18,7 +18,7 @@ namespace mfcslib {
 		~co_handle() {
 			if (m_co) {
 				m_co.destroy();
-				m_co = nullptr;
+				//m_co = nullptr;
 			}
 		}
 		co_handle& operator=(const co_handle&) = delete;

@@ -1,11 +1,10 @@
 CXX = g++
 
-STDVER = -std=c++2a
+STDVER = -std=c++20
 
 DEBUGFLAGS = -g -DDEBUG -fsanitize=address
 
-WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor \
-			-Wno-error=unused-variable -Wno-error=unused-parameter
+WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor
 
 object = main.cpp
 
@@ -16,10 +15,10 @@ LIB = -pthread
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O3 -march=native
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o $(output) -O3 -march=native
 
 testing: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o test.out $(DEBUGFLAGS)
 
 install: $(output)
 	install -m 755 $(output) /usr/bin/

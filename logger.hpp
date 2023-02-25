@@ -59,6 +59,7 @@ public:
 			timespec_get(&ts, TIME_UTC);
 			auto currentTime = localtime(&ts.tv_sec);
 			day = currentTime->tm_mday;
+			char log_name[64] = { 0 };
 			strftime(log_name, 64, "./log_%F", currentTime);
 			log_file.open(log_name, ios::app | ios::out);
 			if (!log_file.is_open()) {
@@ -73,6 +74,9 @@ public:
 	constexpr void no_logfile() {
 		keep_log = false;
 	};
+	constexpr bool enable_log() {
+		return keep_log;
+	}
 
 private:
 	log() = default;
@@ -80,7 +84,6 @@ private:
 	int day = 0;
 	ofstream log_file;
 	bool keep_log = true;
-	char log_name[64] = { 0 };
 	void m_submit_missions(const string& ct) {
 		log_file << ct;
 		log_file.flush();

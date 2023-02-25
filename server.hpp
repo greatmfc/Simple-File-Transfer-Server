@@ -22,11 +22,11 @@
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
 #endif // !MAXARRSZ
-#define LOG_INFO(...) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
-#define LOG_DEBUG(...) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
-#define LOG_VERBOSE log::get_instance()->process_and_submit(LDEBUG,"in ",__FILE__,':',std::to_string(__LINE__))
-#define LOG_WARN(...) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
-#define LOG_ERROR(...) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
+#define LOG_INFO(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
+#define LOG_DEBUG(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
+#define LOG_VERBOSE if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LDEBUG,"in ",__FILE__,':',std::to_string(__LINE__))
+#define LOG_WARN(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LWARN,__VA_ARGS__)
+#define LOG_ERROR(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LERROR,__VA_ARGS__)
 #define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",_addr,' ',_msg)
 #define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",_addr,' ',_msg)
 #define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",_addr)
@@ -36,8 +36,6 @@
 #define DEFAULT_PORT 9007
 #define ALARM_TIME 300s
 #define TIMEOUT 30000
-//#define WAIT 15
-//constexpr auto ori_val = TIMEOUT / WAIT;
 using std::cout;
 using std::endl;
 using std::to_string;
@@ -63,7 +61,6 @@ enum MyEnum
 	GET_TYPE
 };
 
-
 struct data_info :public mfcslib::Socket
 {
 	data_info& operator=(mfcslib::Socket&& other) {
@@ -81,10 +78,6 @@ struct data_info :public mfcslib::Socket
 	}
 	string requests;
 	co_handle task;
-	~data_info() {
-		requests.clear();
-		task.destroy();
-	}
 };
 
 class receive_loop
@@ -155,15 +148,15 @@ void receive_loop::loop()
 				try {
 					while (true) {
 						auto res = localserver.accpet();
-						if (!res) break;
+						if (!res.available()) break;
 					#ifdef DEBUG
-						cout << "Accept from client:" << res.value().get_ip_s() << endl;
+						cout << "Accept from client:" << res.get_ip_s() << endl;
 					#endif // DEBUG
-						LOG_ACCEPT(res.value().get_ip_s());
-						auto accepted_fd = res.value().get_fd();
+						LOG_ACCEPT(res.get_ip_s());
+						auto accepted_fd = res.get_fd();
 						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
-						connections[accepted_fd] = std::move(res.value());
+						connections[accepted_fd] = std::move(res);
 						clock.insert(accepted_fd);
 					}
 				}
@@ -198,7 +191,7 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				auto& di=connections[react_fd];
-				co_handle& task = connections[react_fd].task;
+				co_handle& task = di.task;
 				clock.update_value(react_fd);
 				if (task.empty() || task.done()) {
 					switch (decide_action(react_fd))
@@ -227,7 +220,7 @@ void receive_loop::loop()
 							" Received unknown request: ",
 							di.requests);
 						close_connection(react_fd);
-						di.empty_buf();
+						//di.empty_buf();
 						clock.erase_value(react_fd);
 						connections.erase(react_fd);
 						break;
@@ -300,7 +293,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	auto name = "./" + name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
-		//auto complete = false;
+		auto complete = false;
 		if (size < MAXARRSZ) {
 			auto bufferForFile = mfcslib::make_array<Byte>(size);
 			auto ret = 0ll;
@@ -321,7 +314,7 @@ co_handle receive_loop::deal_with_file(int fd)
 			#endif // DEBUG
 				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
-			//if (bytesLeft <= 0) complete = true;
+			if (bytesLeft <= 0) complete = true;
 			output_file.write(bufferForFile);
 		}
 		else {
@@ -345,7 +338,7 @@ co_handle receive_loop::deal_with_file(int fd)
 				}
 				output_file.write(bufferForFile, 0, ret);
 				if (bytesWritten >= size) {
-					//complete = true;
+					complete = true;
 					break;
 				}
 				if (currentReturn == 0) break;
@@ -357,7 +350,6 @@ co_handle receive_loop::deal_with_file(int fd)
 	#ifdef DEBUG
 		cout << "\nSuccess on receiving file: " << name_size << endl;
 	#endif // DEBUG
-		/*
 		if (complete) {
 			LOG_INFO("Success on receiving file: ", name_size);
 	#ifdef DEBUG
@@ -370,7 +362,6 @@ co_handle receive_loop::deal_with_file(int fd)
 			cout << "\nNot received complete file data." << endl;
 	#endif // DEBUG
 		}
-		*/
 	}
 	catch (const std::exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
@@ -452,7 +443,9 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		off_t off = 0;
 		uintmax_t send_size = requested_file.size();
 		int file_fd = requested_file.get_fd();
+	#ifdef DEBUG
 		auto file_sz = requested_file.size();
+	#endif // DEBUG
 		while (send_size > 0) {
 			ssize_t ret = sendfile(fd, file_fd, &off, send_size);
 		#ifdef DEBUG

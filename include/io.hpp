@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <cstring>
 #include <arpa/inet.h>
-#include <optional>
 #include "util.hpp"
 using std::out_of_range;
 using std::runtime_error;
@@ -235,13 +234,13 @@ namespace mfcslib {
 				throw runtime_error(strerror(errno));
 			}
 		}
-		std::optional<Socket> accpet() {
+		Socket accpet() {
 			sockaddr_in addrs{};
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
 			if (ret < 0) {
 				if (errno != EAGAIN) throw runtime_error(strerror(errno));
-				else return std::nullopt;
+				else return {};
 			}
 			return Socket(ret, addrs);
 		}
