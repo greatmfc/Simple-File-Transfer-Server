@@ -10,30 +10,37 @@ Type the codes below in your terminal:
 
 `cd simple-file-transfer/`
 
- `make` (if gcc12 is not installed, then it is `make sft`)
+ `make`  or  `make testing`  for debug
 
-`make install`(optional)
+  The executable file Makefile generates is named as ***sft.out*** or ***test.out***.
 
 ## HOWTOUSE
 
-Type `./sft -h`for help.
+Type `./sft.out -h` for help.
 
 ```c
 usage:
-	"server mode:"
-	"sft [option]"
-	"client mode:"
-	"sft [option] [argument] ip:port\n"
-	"options: \n"
-	"-c				Check mode for identification before receiving.\n"
-	"-f				File mode for sending file.Argument is your file's path.\n"
-	"-m				Message mode for sending message.Argument is your content.\n"
-	"-h				This information.\n"
-	"-v				Display version.\n"
-	"-n				No log file left behind after finishing program.\n"
-	"-g				Fetch file from server.\n"
-	"Examples:			./sft -f ./file 255.255.255.0:8888\n"
-	"				./sft -m hello,world! 255.255.255.0:8888\n"
-	"				./sft -g file_name 255.255.255.0:8888\n"
+	"Server mode:\n"
+	"    ./sft.out [option]\n"
+	"Client mode:\n"
+	"    ./sft.out [option] [argument] ip:port\n"
+	"Options: \n"
+	"    General:\n"
+	"        -h             This information.\n"
+	"        -v             Display version.\n"
+	"    In server mode:\n"
+	"        -n             No log file will be created.\n"
+	"    In client mode:\n"
+	"        -f             File mode for sending file. Argument is your file's path.\n"
+	"        -g             Fetch file from server. Argument is the file name on server.\n"
+	"        -m             Message mode for sending messages. Argument is your content.\n"
+	"Arguments: \n"
+	"        -f             [file_path]\n"
+	"        -g             [file_name]\n"
+	"        -m             [contents]\n"
+	"Examples:\n"
+	"    ./sft.out -f ./file 255.255.255.0:8888\n"
+	"    ./sft.out -g file_name 255.255.255.0:8888\n"
+	"    ./sft.out -m hello,world! 255.255.255.0:8888\n"
 ```
 
