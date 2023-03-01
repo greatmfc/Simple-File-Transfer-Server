@@ -12,6 +12,7 @@
 #include "include/io.hpp"
 #define BUFFER_SIZE 64
 #define MAXARRSZ 1024'000'000
+#define NUMSTOP 20'000
 using std::cout;
 using std::cerr;
 using std::endl;
@@ -93,7 +94,7 @@ void get_file_from(mfcslib::Socket& tartget, const string& file) {
 		auto bytesWritten = ret;
 		while (true) {
 			ssize_t currentReturn = 0;
-			while (ret < (MAXARRSZ - 200'000)) {
+			while (ret < (MAXARRSZ - NUMSTOP)) {
 				currentReturn = tartget.read(bufferForFile, ret, MAXARRSZ - ret);
 				if (currentReturn <= 0) break;
 				ret += currentReturn;

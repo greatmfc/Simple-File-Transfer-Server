@@ -13,14 +13,13 @@
 #include <iostream>
 #include <string_view>
 #include <unordered_map>
-#include <list>
-#include <unordered_map>
 #include "include/coroutine.hpp"
 #include "include/io.hpp"
 #include "epoll_utility.hpp"
 #include "logger.hpp"
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
+#define NUMSTOP 20'000
 #endif // !MAXARRSZ
 #define LOG_INFO(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LINFO,__VA_ARGS__)
 #define LOG_DEBUG(...) if(log::get_instance()->enable_log()) log::get_instance()->process_and_submit(LDEBUG,__VA_ARGS__)
@@ -30,7 +29,7 @@
 #define LOG_MSG(_addr,_msg) LOG_INFO("Message from:",_addr,' ',_msg)
 #define LOG_FILE(_addr,_msg) LOG_INFO("File request from:",_addr,' ',_msg)
 #define LOG_ACCEPT(_addr) LOG_INFO("Accept from:",_addr)
-#define LOG_CLOSE(_addr) LOG_INFO("Closing :",_addr)
+#define LOG_CLOSE(_addr) LOG_INFO("Closing: ",_addr)
 #define LOG_ERROR_C(_addr) LOG_ERROR("Client:",_addr,' ',strerror(errno))
 #define GETERR strerror(errno)
 #define DEFAULT_PORT 9007
@@ -51,7 +50,6 @@ enum MyEnum
 	MESSAGE_TYPE,
 	NONE_TYPE,
 	ERROR_TYPE,
-	GPS_TYPE,
 	ACCEPT,
 	CLOSE,
 	READ_PRE,
@@ -90,17 +88,20 @@ public:
 	friend timer<int>;
 
 private:
+	enum
+	{
+		FileReceived,
+		FileToSend
+	};
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connections;
-	unordered_map<unsigned int, ofstream*> addr_to_stream;
+	unordered_map<int,string> file_paths;
 	static inline bool running;
 	static inline int pipe_fd[2];
 
 	int decide_action(int fd);
 	co_handle deal_with_file(int fd);
 	void deal_with_mesg(int fd);
-	[[deprecated("Might cause potential memory leaks.")]]
-	void deal_with_gps(int fd);
 	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
@@ -127,6 +128,27 @@ void receive_loop::loop()
 	localserver.set_nonblocking();
 	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
 	epoll_instance.add_fd_or_event(pipe_fd[0], false, true, 0);
+	{
+		try {
+			File settings("./sft.json", false, RDONLY);
+			json_parser js(settings);
+			if (auto res = js.find("FileReceived"); res) {
+				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
+					file_paths[FileReceived] = *val;
+					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
+					create_directory(file_paths[FileReceived]);
+				}
+			}
+			if (auto res = js.find("FileToSend"); res) {
+				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
+					file_paths[FileToSend] = *val;
+					if (file_paths[FileToSend].back() != '/') file_paths[FileToSend] += '/';
+					create_directory(file_paths[FileToSend]);
+				}
+			}
+		}
+		catch (std::exception& e) {}
+	}
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME.count());
 	LOG_INFO("Server starts.");
@@ -157,7 +179,7 @@ void receive_loop::loop()
 						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
 						connections[accepted_fd] = std::move(res);
-						clock.insert(accepted_fd);
+						clock.insert_or_update(accepted_fd);
 					}
 				}
 				catch (const std::exception& e) {
@@ -173,8 +195,8 @@ void receive_loop::loop()
 			#endif // DEBUG
 				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_s());
 				close_connection(react_fd);
-				connections.erase(react_fd);
 				clock.erase_value(react_fd);
+				connections.erase(react_fd);
 			}
 			else if (react_fd == pipe_fd[0]) {
 				int signal = 0;
@@ -184,15 +206,15 @@ void receive_loop::loop()
 				alarm(ALARM_TIME.count());
 				auto timeout_list = clock.clear_expired();
 				for (const auto& i : timeout_list) {
-					close_connection(i);
 					LOG_INFO("Timeout client: ", connections[i].get_ip_s());
+					close_connection(i);
 					connections.erase(i);
 				}
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
 				auto& di=connections[react_fd];
 				co_handle& task = di.task;
-				clock.update_value(react_fd);
+				clock.insert_or_update(react_fd);
 				if (task.empty() || task.done()) {
 					switch (decide_action(react_fd))
 					{
@@ -203,10 +225,6 @@ void receive_loop::loop()
 					case MESSAGE_TYPE:
 						//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
 						deal_with_mesg(react_fd);
-						break;
-					case GPS_TYPE:
-						//tp.submit_to_pool(&receive_loop::deal_with_gps,this,react_fd);
-						deal_with_gps(react_fd);
 						break;
 					case GET_TYPE:
 						//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
@@ -220,7 +238,6 @@ void receive_loop::loop()
 							" Received unknown request: ",
 							di.requests);
 						close_connection(react_fd);
-						//di.empty_buf();
 						clock.erase_value(react_fd);
 						connections.erase(react_fd);
 						break;
@@ -230,7 +247,7 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & EPOLLOUT) {
 				co_handle& task = connections[react_fd].task;
-				clock.update_value(react_fd);
+				clock.insert_or_update(react_fd);
 				if (!(task.empty() || task.done())) {
 					task.resume();
 				}
@@ -238,11 +255,6 @@ void receive_loop::loop()
 		}
 	}
 	//tp.shutdown_pool();
-	for (auto& [addr, stream] : addr_to_stream) {
-		if (stream != nullptr) {
-			delete stream;
-		}
-	}
 	LOG_INFO("Server quits.");
 	exit(0);
 }
@@ -274,7 +286,6 @@ int receive_loop::decide_action(int fd)
 	switch (request[0])
 	{
 	case 'f':return FILE_TYPE;
-	case 'n':return GPS_TYPE;
 	case 'g':return GET_TYPE;
 	case 'm':return MESSAGE_TYPE;
 	}
@@ -290,7 +301,10 @@ co_handle receive_loop::deal_with_file(int fd)
 	LOG_INFO("Receiving file from:", connections[fd].get_ip_port_s(), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
-	auto name = "./" + name_size.substr(0, idx);
+	string name = "./";
+	if (file_paths.contains(FileReceived))
+		name = file_paths[FileReceived];
+	name += name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
 		auto complete = false;
@@ -323,7 +337,7 @@ co_handle receive_loop::deal_with_file(int fd)
 			size_t bytesWritten = ret;
 			while (true) {
 				auto currentReturn = 0ll;
-				while (ret < (MAXARRSZ - 200'000)) {
+				while (ret < (MAXARRSZ - NUMSTOP)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
 					if (currentReturn < 0) {
 						co_yield 1;
@@ -346,10 +360,6 @@ co_handle receive_loop::deal_with_file(int fd)
 				ret = 0;
 			}
 		}
-		LOG_INFO("Success on receiving file: ", name_size);
-	#ifdef DEBUG
-		cout << "\nSuccess on receiving file: " << name_size << endl;
-	#endif // DEBUG
 		if (complete) {
 			LOG_INFO("Success on receiving file: ", name_size);
 	#ifdef DEBUG
@@ -369,14 +379,11 @@ co_handle receive_loop::deal_with_file(int fd)
 		LOG_CLOSE(connections[fd].get_ip_s());
 	#ifdef DEBUG
 		cout << e.what() << endl;
-		cout << "Not received complete file data." << endl;
+		cout << "Not received complete file data in fd: " << fd << endl;
+		cout << "Closing it...\n" << endl;
 	#endif // DEBUG
 		close_connection(fd);
-		//goto end;
 	}
-	//epoll_instance.add_fd_or_event(fd, true, true, 0);
-//end:
-	//connections[fd].requests.clear();
 	co_return;
 }
 
@@ -391,32 +398,6 @@ void receive_loop::deal_with_mesg(int fd)
 	connections[fd].requests.clear();
 }
 
-void receive_loop::deal_with_gps(int fd)
-{
-	char file_name[32] = "gps_";
-	in_addr tmp_addr = connections[fd].get_ip();
-	strcat(file_name, inet_ntoa(tmp_addr));
-	if (addr_to_stream[tmp_addr.s_addr] == nullptr) {
-		addr_to_stream[tmp_addr.s_addr] = new ofstream(file_name, ios::app | ios::out);	
-		if (addr_to_stream[tmp_addr.s_addr]->fail()) [[unlikely]] {
-			LOG_ERROR("Error while creating gps file.");
-			LOG_CLOSE(connections[fd].get_ip_s());
-			close_connection(fd);
-			connections[fd].requests.clear();
-			return;
-		}
-	}
-	*addr_to_stream[tmp_addr.s_addr] << connections[fd].requests.substr(2);
-	addr_to_stream[tmp_addr.s_addr]->flush();
-	LOG_MSG(connections[fd].get_ip_s(), "GPS content");
-#ifdef DEBUG
-	cout << "Success on receiving GPS: " << &connections[fd].requests[2];
-	cout.flush();
-#endif // DEBUG
-	connections[fd].requests.clear();
-	//epoll_instance.add_fd_or_event(fd, true, true, 0);
-}
-
 mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 {
 	string& request = connections[fd].requests;
@@ -424,6 +405,8 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 		connections[fd].get_ip_s(), ' ',
 		&request[2]);
 	string full_path("./");
+	if(file_paths.contains(FileToSend))
+		full_path = file_paths[FileToSend];
 	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	request.clear();
@@ -500,16 +483,8 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 
 void receive_loop::close_connection(int fd)
 {
-	in_addr tmp_addr = connections[fd].get_ip();
-	if (addr_to_stream[tmp_addr.s_addr] != nullptr){
-		if (addr_to_stream[tmp_addr.s_addr]->is_open()) {
-			addr_to_stream[tmp_addr.s_addr]->close();
-		}
-		delete addr_to_stream[tmp_addr.s_addr];
-		addr_to_stream[tmp_addr.s_addr] = nullptr;
-	}
+	//connections.erase(fd); //Seems to be undefined behavior while called in coroutine scope.
 	epoll_instance.remove_fd_from_epoll(fd);
-	//connections.erase(fd);
 }
 
 void receive_loop::alarm_handler(int sig)

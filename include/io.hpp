@@ -99,10 +99,10 @@ namespace mfcslib {
 			switch (rwmode)
 			{
 			case 0: flag |= O_RDONLY; break;
-			case 1: flag |= O_WRONLY; break;
-			default:flag |= O_RDWR; break;
+			case 1: flag |= O_WRONLY | O_CREAT; break;
+			default:flag |= O_RDWR | O_CREAT; break;
 			}
-			if (trunc) flag |= O_TRUNC | O_CREAT;
+			if (trunc) flag |= O_TRUNC;
 			else flag |= O_APPEND;
 			_fd = ::open(file.c_str(), flag, 0644);
 			if (_fd < 0) throw runtime_error(strerror(errno));

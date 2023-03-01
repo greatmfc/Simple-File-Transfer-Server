@@ -163,7 +163,7 @@ namespace mfcslib {
 		void setup_interval(const sc::seconds& time) {
 			_interval = time;
 		}
-		void insert(const T& value) {
+		void insert_or_update(const T& value) {
 			_data[value] = sc::system_clock::now();
 		}
 		void erase_value(const T& value) {
@@ -181,10 +181,6 @@ namespace mfcslib {
 				break;
 			}
 			return res;
-		}
-		void update_value(const T& value) {
-			_data.erase(value);
-			_data[value] = sc::system_clock::now();
 		}
 
 	private:
