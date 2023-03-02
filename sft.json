@@ -1,0 +1,5 @@
+{
+	"FileReceived" : "./FileReceived/" ,
+	"FileToSend" : "./FileToSend/" ,
+	"LogPath" : "./Logs/"
+}

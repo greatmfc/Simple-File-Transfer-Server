@@ -43,7 +43,7 @@ void usage() {
 
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
-	cout << "Last modify day: " << LAST_MODIFY << endl;
+	cout << "Last modify date: " << LAST_MODIFY << endl;
 	exit(2);
 }
 
