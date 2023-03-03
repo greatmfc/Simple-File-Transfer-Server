@@ -153,7 +153,6 @@ void receive_loop::loop()
 	alarm(ALARM_TIME.count());
 	LOG_INFO("Server starts.");
 	mfcslib::timer<int> clock(ALARM_TIME);
-	//std::list<mfcslib::co_handle> tasks;
 	//thread_pool tp;
 	//tp.init_pool();
 	while (running) {
@@ -220,7 +219,6 @@ void receive_loop::loop()
 					{
 					case FILE_TYPE:
 						task = deal_with_file(react_fd);
-						//tasks.emplace_back(deal_with_file(react_fd));
 						break;
 					case MESSAGE_TYPE:
 						//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
@@ -228,7 +226,6 @@ void receive_loop::loop()
 						break;
 					case GET_TYPE:
 						//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
-						//tasks.emplace_back(deal_with_get_file(react_fd));
 						task = deal_with_get_file(react_fd);
 						break;
 					default:
@@ -483,7 +480,6 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 
 void receive_loop::close_connection(int fd)
 {
-	//connections.erase(fd); //Seems to be undefined behavior while called in coroutine scope.
 	epoll_instance.remove_fd_from_epoll(fd);
 }
 

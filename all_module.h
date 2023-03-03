@@ -22,7 +22,7 @@
  * The forth number specifies a testing-version when it is '1', \
 	a release-version when it is '2'.
 */
-#define VERSION "1.9.6.1"
-#define LAST_MODIFY 20230301L
+#define VERSION "1.9.6.2"
+#define LAST_MODIFY 20230303L
 
 #endif //! AM_H
