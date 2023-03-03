@@ -6,34 +6,44 @@
 #include <sys/stat.h>
 #include <locale>
 #include <csignal>
-#include "common_headers.h"
+#include <vector>
+#include "all_module.h"
 using std::locale;
 using std::cout;
 using std::endl;
+using std::vector;
+
 void usage() {
 	fprintf(stderr,
-		"server mode:"
-		"./sft.out [option]"
-		"client mode:"
-		"./sft.out [option] [argument] ip:port\n"
-		"options: \n"
-		"-c				Check mode for identification before receiving.\n"
-		"-f				File mode for sending file.Argument is your file's path.\n"
-		"-m				Message mode for sending message.Argument is your content.\n"
-		"-h				This information.\n"
-		"-v				Display version.\n"
-		"-n				No log file left behind after finishing program.\n"
-		"-g				Fetch file from server.\n"
-		"Example:		./sft.out -f ./file 255.255.255.0:8888\n"
-		"				./sft.out -m hello,world! 255.255.255.0:8888\n"
-		"				./sft.out -g file_name 255.255.255.0:8888\n"
+		"Server mode:\n"
+		"    ./sft.out [option]\n"
+		"Client mode:\n"
+		"    ./sft.out [option] [argument] ip:port\n"
+		"Options: \n"
+		"    General:\n"
+		"        -h             This information.\n"
+		"        -v             Display version.\n"
+		"    In server mode:\n"
+		"        -n             No log file will be created.\n"
+		"    In client mode:\n"
+		"        -f             File mode for sending file. Argument is your file's path.\n"
+		"        -g             Fetch file from server. Argument is the file name on server.\n"
+		"        -m             Message mode for sending messages. Argument is your content.\n"
+		"Arguments: \n"
+		"        -f             [file_path]\n"
+		"        -g             [file_name]\n"
+		"        -m             [contents]\n"
+		"Examples:\n"
+		"    ./sft.out -f ./file 255.255.255.0:8888\n"
+		"    ./sft.out -g file_name 255.255.255.0:8888\n"
+		"    ./sft.out -m hello,world! 255.255.255.0:8888\n"
 	);
 	exit(2);
 }
 
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
-	cout << "Last modify day: " << LAST_MODIFY << endl;
+	cout << "Last modify date: " << LAST_MODIFY << endl;
 	exit(2);
 }
 
@@ -99,37 +109,25 @@ int main(int argc, char* argv[])
 		switch (opt)
 		{
 		case 'm':
-		{
 			mesg = optarg;
 			break; 
-		}
 		case 'f':
-		{
 			path = optarg;
 			break; 
-		}
 		case 'h':
-		{
 			usage();
-			break; 
-		}
+			break;
 		case 'v':
-		{
 			version();
 			break; 
-		}
 		case 'n':
-		{
 			log::get_instance()->no_logfile();
 			no_log_file = true;
 			break;
-		}
 		case 'g':
-		{
 			file_to_get = optarg;
 			break;
-		}
-			default: break;
+		default: throw std::invalid_argument("");
 		}
 	}
 	if (argc != 1 && optind == argc) {

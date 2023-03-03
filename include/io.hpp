@@ -1,120 +1,23 @@
-#ifndef CLA_HPP
-#define CLA_HPP
-#include <iterator>
+#ifndef IO_HPP
+#define IO_HPP
 #include <stdexcept>
 #include <filesystem>
 #include <fcntl.h>
-#ifdef _WIN32
-#include <io.h>
-#include <WinSock2.h>
-#define socklen_t int
-#define __read__(_1,_2,_3) ::recv(_1,_2,_3,0)
-#define __write__(_1,_2,_3) ::send(_1,_2,_3,0)
-#pragma warning(disable : 4996)
-#pragma comment(lib,"ws2_32.lib")
-#elif __linux__
 #include <unistd.h>
 #include <cstring>
 #include <arpa/inet.h>
-#else
-#error Unsupported Platform.
-#endif // WIN32
+#include "util.hpp"
 using std::out_of_range;
 using std::runtime_error;
 using std::string;
 using namespace std::filesystem;
 using Byte = char;
 namespace mfcslib {
-	template<typename _Type>
-	class TypeArray
-	{
-		using size_type = size_t;
-	public:
-		TypeArray() = delete;
-		TypeArray(const TypeArray& arg) = delete;
-		~TypeArray() {
-			if (_DATA != nullptr) {
-				delete[] _DATA;
-				_SIZE = 0;
-				_DATA = nullptr;
-			}
-		};
-		constexpr explicit TypeArray(size_t sz) :_SIZE(sz) {
-			_DATA = new _Type[sz];
-			memset(_DATA, 0, sz);
-		}
-		constexpr explicit TypeArray(TypeArray&& arg) {
-			_DATA = arg._DATA;
-			arg._DATA = nullptr;
-			_SIZE = arg._SIZE;
-			arg._SIZE = 0;
-		}
-		constexpr _Type& operator[](int arg) {
-			if (arg < 0 || arg >= _SIZE) throw std::out_of_range("In [].");
-			return _DATA[arg];
-		}
-		constexpr bool empty() {
-			return _DATA == nullptr;
-		}
-		constexpr void fill(_Type val, size_t start, size_t end) {
-			if (start >= end) throw std::out_of_range("In fill, start is greater or equal to end.");
-			memset(_DATA + start, val, end - start);
-		}
-		constexpr void empty_array() {
-			fill(0, 0, _SIZE);
-		}
-		constexpr size_type length() {
-			return _SIZE;
-		}
-		constexpr auto read(int fd) {
-			auto ret = ::read(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto read(int fd, size_t pos, size_t sz) {
-			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE)
-				throw out_of_range("In read, pos or sz is out of range.");
-			auto ret=::read(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto write(int fd) {
-			auto ret = ::write(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr auto write(int fd, ssize_t pos, size_t sz) {
-			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE) 
-				throw out_of_range("In write, pos or sz is out of range.");
-			auto ret = ::write(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
-			return ret;
-		}
-		constexpr void destroy() {
-			this->~TypeArray();
-		}
-		constexpr auto get_ptr() {
-			return _DATA;
-		}
-		constexpr auto to_string() {
-			return std::string(_DATA);
-		}
-		friend constexpr std::basic_ostream<_Type>&
-			operator<<(std::basic_ostream<_Type>& os, TypeArray<_Type>& str) {
-			os << str._DATA;
-			return os;
-		}
-
-	private:
-		_Type* _DATA = nullptr;
-		size_type _SIZE = 0;
+	enum {
+		RDONLY,
+		WRONLY,
+		RDWR
 	};
-
-	template<typename T>
-	auto make_array(size_t sz) {
-		return TypeArray<T>(sz);
-	}
-	
 	class basic_io
 	{
 	protected:
@@ -164,7 +67,10 @@ namespace mfcslib {
 			return ret;
 		}
 		void close() {
-			this->~basic_io();
+			if (_fd > 0) {
+				::close(_fd);
+				_fd = -1;
+			}
 		}
 		auto get_fd() {
 			return _fd;
@@ -189,12 +95,12 @@ namespace mfcslib {
 		File() = default;
 		File(const File&) = delete;
 		auto open(const string& file, bool trunc, int rwmode) {
-			int flag = O_CREAT;
+			int flag = 0;
 			switch (rwmode)
 			{
 			case 0: flag |= O_RDONLY; break;
-			case 1: flag |= O_WRONLY; break;
-			default:flag |= O_RDWR; break;
+			case 1: flag |= O_WRONLY | O_CREAT; break;
+			default:flag |= O_RDWR | O_CREAT; break;
 			}
 			if (trunc) flag |= O_TRUNC;
 			else flag |= O_APPEND;
@@ -253,7 +159,6 @@ namespace mfcslib {
 		Socket(const string& ip, uint16_t port) {
 			memset(&ip_port, 0, sizeof ip_port);
 			ip_port.sin_family = AF_INET;
-			//unsigned long target_addr = 0;
 			ip_port.sin_addr.s_addr = inet_addr(ip.c_str());
 			if (ip_port.sin_addr.s_addr == INADDR_NONE) {
 				throw std::invalid_argument("Invalid address:");
@@ -267,42 +172,31 @@ namespace mfcslib {
 				throw std::runtime_error(error_msg);
 			}
 		}
-	#ifdef _WIN32
-		auto read(TypeArray<Byte>& buf) {
-			auto ret = __read__(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
+		in_addr get_ip() {
+			return ip_port.sin_addr;
 		}
-		auto read(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
-			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
-				throw out_of_range("In read, pos or sz is out of range.");
-			auto ret = __read__(_fd, buf.get_ptr(), len);
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
+		std::string get_ip_s() {
+			return inet_ntoa(ip_port.sin_addr);
 		}
-		auto write(TypeArray<Byte>& buf) {
-			auto ret = __write__(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
+		auto get_port() {
+			return ntohs(ip_port.sin_port);
 		}
-		auto write(TypeArray<Byte>& buf, unsigned pos, unsigned sz) {
-			auto len = buf.length();
-			if (pos >= len || sz > len || pos + sz > len)
-				throw out_of_range("In write, pos or sz is out of range.");
-			auto ret = __write__(_fd, buf.get_ptr(), len);
-			if (ret < 0) throw runtime_error(strerror(errno));
-			return ret;
+		std::string get_port_s() {
+			return std::to_string(ntohs(ip_port.sin_port));
 		}
-		void close() {
-			if (_fd != -1) {
-				::closesocket(_fd);
-				_fd = -1;
-			}
+		std::string get_ip_port_s() {
+			return get_ip_s() + ':' + get_port_s();
 		}
-	#endif // _WIN32
 		~Socket() {
 			this->close();
+		}
+
+		mfcslib::Socket& operator=(mfcslib::Socket&& other) {
+			this->_fd = other._fd;
+			other._fd = -1;
+			this->ip_port = other.ip_port;
+			::memset(&other.ip_port, 0, sizeof(other.ip_port));
+			return *this;
 		}
 
 	protected:
@@ -321,13 +215,6 @@ namespace mfcslib {
 			::memset(&other.ip_port, 0, sizeof(other.ip_port));
 		}
 		ServerSocket(uint16_t port) {
-		#ifdef _WIN32
-			WORD sockVersion=MAKEWORD(2,2);
-			WSADATA wsaData;
-			if (WSAStartup(sockVersion, &wsaData) != 0) {
-				throw runtime_error("Startup fail.");
-			}
-		#endif // _WIN32
 			memset(&ip_port, 0, sizeof ip_port);
 			ip_port.sin_family = AF_INET;
 			ip_port.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -352,11 +239,13 @@ namespace mfcslib {
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
 			if (ret < 0) {
-				throw runtime_error(strerror(errno));
+				if (errno != EAGAIN) throw runtime_error(strerror(errno));
+				else return {};
 			}
 			return Socket(ret, addrs);
 		}
 		~ServerSocket() {}
 	};
+
 }
-#endif // !CLA_HPP
+#endif // !IO_HPP

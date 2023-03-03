@@ -1,13 +1,12 @@
 CXX = g++
 
-STDVER = -std=c++17
+STDVER = -std=c++20
 
-DEBUGFLAGS = -g -DDEBUG
+DEBUGFLAGS = -g -DDEBUG -fsanitize=address
 
-WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor \
-			-Wno-error=unused-variable -Wno-error=unused-parameter
+WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor
 
-object = thread_pool.cpp epoll_utility.cpp log.cpp server.cpp client.cpp main.cpp
+object = main.cpp
 
 output = sft.out
 
@@ -16,10 +15,10 @@ LIB = -pthread
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -Ofast
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o $(output) -O3 -march=native
 
 testing: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o test.out $(DEBUGFLAGS)
 
 install: $(output)
 	install -m 755 $(output) /usr/bin/
