@@ -49,7 +49,7 @@ enum MyEnum
 	FILE_TYPE,
 	MESSAGE_TYPE,
 	NONE_TYPE,
-	ERROR_TYPE,
+	HTTP_TYPE,
 	ACCEPT,
 	CLOSE,
 	READ_PRE,
@@ -91,7 +91,9 @@ private:
 	enum
 	{
 		FileReceived,
-		FileToSend
+		FileToSend,
+		HTTPFiles,
+		DefaultHTTP
 	};
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connections;
@@ -105,6 +107,7 @@ private:
 	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
+	co_handle deal_with_http(int fd);
 };
 
 void receive_loop::stop_loop(int sig)
@@ -132,6 +135,25 @@ void receive_loop::loop()
 		try {
 			File settings("./sft.json", false, RDONLY);
 			json_parser js(settings);
+			for (auto& [key, value] : js.get_obj()) {
+				auto val = value.at<string>();
+				if (key == "httpPath" && val != nullptr) {
+					file_paths[FileReceived] = *val;
+					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
+					create_directory(file_paths[FileReceived]);
+				}
+				else if (key == "FileReceived" && val != nullptr) {
+					file_paths[FileReceived] = *val;
+					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
+					create_directory(file_paths[FileReceived]);
+				}
+				else if (key == "FileToSend" && val != nullptr) {
+					file_paths[FileToSend] = *val;
+					if (file_paths[FileToSend].back() != '/') file_paths[FileToSend] += '/';
+					create_directory(file_paths[FileToSend]);
+				}
+			}
+			/*
 			if (auto res = js.find("FileReceived"); res) {
 				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
 					file_paths[FileReceived] = *val;
@@ -146,6 +168,14 @@ void receive_loop::loop()
 					create_directory(file_paths[FileToSend]);
 				}
 			}
+			if (auto res = js.find("HTTPFiles"); res) {
+				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
+					file_paths[HTTPFiles] = *val;
+					if (file_paths[HTTPFiles].back() != '/') file_paths[HTTPFiles] += '/';
+					create_directory(file_paths[HTTPFiles]);
+				}
+			}
+			*/
 		}
 		catch (std::exception& e) {}
 	}
@@ -228,6 +258,9 @@ void receive_loop::loop()
 						//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
 						task = deal_with_get_file(react_fd);
 						break;
+					case HTTP_TYPE:
+						task = deal_with_http(react_fd);
+						break;
 					default:
 						LOG_INFO(
 							"Closing:",
@@ -285,6 +318,8 @@ int receive_loop::decide_action(int fd)
 	case 'f':return FILE_TYPE;
 	case 'g':return GET_TYPE;
 	case 'm':return MESSAGE_TYPE;
+	case 'G': [[fallthrough]];
+	case 'P':return HTTP_TYPE;
 	}
 	end:return -1;
 }
@@ -488,6 +523,64 @@ void receive_loop::alarm_handler(int sig)
 	int save_errno = errno;
 	send(pipe_fd[1], &sig, 1, 0);
 	errno = save_errno;
+}
+
+inline co_handle receive_loop::deal_with_http(int fd)
+{
+	string target_http = "./";
+	if (file_paths.contains(HTTPFiles)) {
+		target_http = file_paths[HTTPFiles];
+	}
+	auto& request = connections[fd].requests;
+	auto idx = request.find_first_of('/');
+	if (request[idx + 1] == ' ') {
+		if (file_paths.contains(DefaultHTTP))
+			target_http += file_paths[DefaultHTTP];
+		else
+			target_http += "index.html";
+	}
+	else {
+		auto end_idx = request.find(' ', idx);
+		target_http += request.substr(idx + 1, end_idx - idx - 1);
+	}
+	request.clear();
+	string response = "HTTP/1.1 ";
+	try {
+		File send(target_http, false, RDONLY);
+		response = response + "200 " + "OK\r\n";
+		response += "Content-Length:" + send.size_string() + "\r\n";
+		response += "Connection:close\r\n\r\n";
+		connections[fd].write(response);
+		off_t off = 0;
+		auto sz = send.size();
+		ssize_t ret = 0;
+		do {
+			ret = sendfile(connections[fd].get_fd(), send.get_fd(), &off, sz);
+			if (ret == -1 && errno != EAGAIN) {
+				string err = "Error in sendfile: ";
+				err += GETERR;
+				throw std::domain_error(err);
+			}
+			else co_yield 1;
+		} while (ret > 0);
+	}
+	catch (const std::runtime_error& e) {
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error ", e.what());
+		auto path = target_http.substr(0, target_http.find_last_of('/') + 1) + "404.html";
+		File not_found(path, false, RDONLY);
+		response = response + "404 " + "Not Found\r\n";
+		response += "Content-Length:" + not_found.size_string() + "\r\n";
+		response += "Connection:keep-alive\r\n\r\n";
+		connections[fd].write(response);
+		off_t off = 0;
+		ssize_t sz = not_found.size();
+		sendfile(connections[fd].get_fd(), not_found.get_fd(), &off, sz);
+	}
+	catch (const std::domain_error& a) {
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error ", a.what());
+		close_connection(fd);
+	}
+	co_return;
 }
 #endif // !S_HPP
 

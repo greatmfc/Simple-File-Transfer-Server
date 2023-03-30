@@ -2,11 +2,11 @@
 #define JSHPP
 #include <variant>
 #include <optional>
+#include <any>
 #include "util.hpp"
 using val_type = std::variant<long long, bool, std::string, std::nullptr_t>;
 namespace mfcslib {
-	enum
-	{
+	enum {
 		VTYPE,
 		ATYPE,
 		KVTYPE
@@ -63,6 +63,10 @@ namespace mfcslib {
 				}
 			}
 			return {};
+		}
+		template<typename T>
+		T* at() {
+			return std::get_if<T>(&_val);
 		}
 	};
 
@@ -147,7 +151,12 @@ namespace mfcslib {
 		auto find(const std::string& key) {
 			return _json.find(key);
 		}
-
+		auto& get_obj() {
+			return _json._obj;
+		}
+		auto& get_arr() {
+			return _json._arr;
+		}
 	private:
 		Val _json;
 		char* pt = nullptr;
