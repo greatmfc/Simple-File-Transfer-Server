@@ -5,13 +5,13 @@ Use it to transfer your files between two different linux host.
 ## HOWTOWORK
 Run this program in server mode on host A, then run the same program in client mode on host B to interact with server.
 
-For example, I would like to transfer a file called ***winter.mp4*** from host A whose ip is ***192.168.100.5*** to host B. I can run it by typing command `./sft.out` on A then type command `./sft.out -g winter.mp4 192.168.100.5:9007` to download the file into current directory.
+For example, I would like to transfer a file called ***winter.mp4*** from host A whose ip is ***192.168.100.5*** to host B. I can do this by firstly typing command `./sft.out` to run this program in server mode on A then type command `./sft.out -g winter.mp4 192.168.100.5:9007` to run this program in client mode on B to download the file into current directory.
 
-If you wish to send a file such as ***winter.mp3*** from B to A, you can do this by typing command `./sft.out -f ./winter.mp3 192.168.100.5:9007`. The program will display detailed information whether its operation is success or not.
+If you wish to send a file such as ***winter.mp3*** from B to A, you can do this by typing command `./sft.out -f ./winter.mp3 192.168.100.5:9007` on B (Make sure you already run the program in server mode on A). The program will display detailed information about whether its operation is succeed or not.
 
 You can also send a message from B to A by typing `./sft.out -m hello,winter! 192.168.100.5:9007`.
 
-This program supports json configuration. You can custom the locations to store log files and where stores files can be sent and files received to be stored at. If locations are not specified, the default location is program's working directory.
+This program supports json configuration. You can custom the locations to store log files, to store files which can be sent and the files that have been received to be stored at. If locations are not specified, the default location is program's working directory.
 
 The supported key fields and examples are presented below:
 ```json
