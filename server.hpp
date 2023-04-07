@@ -85,7 +85,6 @@ public:
 	~receive_loop() = default;
 	static void stop_loop(int sig);
 	void loop();
-	friend timer<int>;
 
 private:
 	enum
@@ -93,11 +92,11 @@ private:
 		FileReceived,
 		FileToSend,
 		HTTPFiles,
-		DefaultHTTP
+		DefaultPage
 	};
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connections;
-	unordered_map<int,string> file_paths;
+	unordered_map<int,string> json_conf;
 	static inline bool running;
 	static inline int pipe_fd[2];
 
@@ -137,45 +136,25 @@ void receive_loop::loop()
 			json_parser js(settings);
 			for (auto& [key, value] : js.get_obj()) {
 				auto val = value.at<string>();
-				if (key == "httpPath" && val != nullptr) {
-					file_paths[FileReceived] = *val;
-					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
-					create_directory(file_paths[FileReceived]);
+				if (key == "HttpPath" && val != nullptr) {
+					json_conf[HTTPFiles] = *val;
+					if (json_conf[HTTPFiles].back() != '/') json_conf[HTTPFiles] += '/';
+					create_directory(json_conf[HTTPFiles]);
 				}
 				else if (key == "FileReceived" && val != nullptr) {
-					file_paths[FileReceived] = *val;
-					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
-					create_directory(file_paths[FileReceived]);
+					json_conf[FileReceived] = *val;
+					if (json_conf[FileReceived].back() != '/') json_conf[FileReceived] += '/';
+					create_directory(json_conf[FileReceived]);
 				}
 				else if (key == "FileToSend" && val != nullptr) {
-					file_paths[FileToSend] = *val;
-					if (file_paths[FileToSend].back() != '/') file_paths[FileToSend] += '/';
-					create_directory(file_paths[FileToSend]);
+					json_conf[FileToSend] = *val;
+					if (json_conf[FileToSend].back() != '/') json_conf[FileToSend] += '/';
+					create_directory(json_conf[FileToSend]);
+				}
+				else if (key == "DefaultPage" && val != nullptr) {
+					json_conf[DefaultPage] = *val;
 				}
 			}
-			/*
-			if (auto res = js.find("FileReceived"); res) {
-				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
-					file_paths[FileReceived] = *val;
-					if (file_paths[FileReceived].back() != '/') file_paths[FileReceived] += '/';
-					create_directory(file_paths[FileReceived]);
-				}
-			}
-			if (auto res = js.find("FileToSend"); res) {
-				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
-					file_paths[FileToSend] = *val;
-					if (file_paths[FileToSend].back() != '/') file_paths[FileToSend] += '/';
-					create_directory(file_paths[FileToSend]);
-				}
-			}
-			if (auto res = js.find("HTTPFiles"); res) {
-				if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
-					file_paths[HTTPFiles] = *val;
-					if (file_paths[HTTPFiles].back() != '/') file_paths[HTTPFiles] += '/';
-					create_directory(file_paths[HTTPFiles]);
-				}
-			}
-			*/
 		}
 		catch (std::exception& e) {}
 	}
@@ -183,6 +162,9 @@ void receive_loop::loop()
 	alarm(ALARM_TIME.count());
 	LOG_INFO("Server starts.");
 	mfcslib::timer<int> clock(ALARM_TIME);
+#ifdef DEBUG
+	cout << "Listening on local: " + localserver.get_ip_port_s() << endl;
+#endif // DEBUG
 	//thread_pool tp;
 	//tp.init_pool();
 	while (running) {
@@ -201,9 +183,9 @@ void receive_loop::loop()
 						auto res = localserver.accpet();
 						if (!res.available()) break;
 					#ifdef DEBUG
-						cout << "Accept from client:" << res.get_ip_s() << endl;
+						cout << "Accept from client:" << res.get_ip_port_s() << endl;
 					#endif // DEBUG
-						LOG_ACCEPT(res.get_ip_s());
+						LOG_ACCEPT(res.get_ip_port_s());
 						auto accepted_fd = res.get_fd();
 						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
@@ -220,9 +202,9 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 			#ifdef DEBUG
-				cout << "Disconnect from client:" << connections[react_fd].get_ip_s() << endl;
+				cout << "Disconnect from client:" << connections[react_fd].get_ip_port_s() << endl;
 			#endif // DEBUG
-				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_s());
+				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_port_s());
 				close_connection(react_fd);
 				clock.erase_value(react_fd);
 				connections.erase(react_fd);
@@ -235,7 +217,7 @@ void receive_loop::loop()
 				alarm(ALARM_TIME.count());
 				auto timeout_list = clock.clear_expired();
 				for (const auto& i : timeout_list) {
-					LOG_INFO("Timeout client: ", connections[i].get_ip_s());
+					LOG_INFO("Timeout client: ", connections[i].get_ip_port_s());
 					close_connection(i);
 					connections.erase(i);
 				}
@@ -264,7 +246,7 @@ void receive_loop::loop()
 					default:
 						LOG_INFO(
 							"Closing:",
-							di.get_ip_s(),
+							di.get_ip_port_s(),
 							" Received unknown request: ",
 							di.requests);
 						close_connection(react_fd);
@@ -301,14 +283,14 @@ int receive_loop::decide_action(int fd)
 		memset(buffer, 0, 256);
 	}
 	if (ret < 0 && errno != EAGAIN) {
-		LOG_ERROR_C(connections[fd].get_ip_s());
+		LOG_ERROR_C(connections[fd].get_ip_port_s());
 #ifdef DEBUG
 		perror("Something happened while read from client");
 #endif // DEBUG
 		goto end;
 	}
 #ifdef DEBUG
-	cout << "Read msg from client: " << request << endl;
+	//cout << "Read msg from client: " << request << endl;
 #endif // DEBUG
 	if (request.back() != '\n') {
 		request.push_back('\n');
@@ -334,8 +316,8 @@ co_handle receive_loop::deal_with_file(int fd)
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
 	string name = "./";
-	if (file_paths.contains(FileReceived))
-		name = file_paths[FileReceived];
+	if (json_conf.contains(FileReceived))
+		name = json_conf[FileReceived];
 	name += name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
@@ -406,9 +388,9 @@ co_handle receive_loop::deal_with_file(int fd)
 		}
 	}
 	catch (const std::exception& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
 		LOG_ERROR("Not received complete file data.");
-		LOG_CLOSE(connections[fd].get_ip_s());
+		LOG_CLOSE(connections[fd].get_ip_port_s());
 	#ifdef DEBUG
 		cout << e.what() << endl;
 		cout << "Not received complete file data in fd: " << fd << endl;
@@ -423,7 +405,7 @@ void receive_loop::deal_with_mesg(int fd)
 {
 	char code = '1';
 	write(fd, &code, sizeof code);
-	LOG_MSG(connections[fd].get_ip_s(), &connections[fd].requests[2]);
+	LOG_MSG(connections[fd].get_ip_port_s(), &connections[fd].requests[2]);
 #ifdef DEBUG
 	cout << "Success on receiving message: " << &connections[fd].requests[2];
 #endif // DEBUG
@@ -434,11 +416,11 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 {
 	string& request = connections[fd].requests;
 	LOG_INFO("Receive file request from:",
-		connections[fd].get_ip_s(), ' ',
+		connections[fd].get_ip_port_s(), ' ',
 		&request[2]);
 	string full_path("./");
-	if(file_paths.contains(FileToSend))
-		full_path = file_paths[FileToSend];
+	if(json_conf.contains(FileToSend))
+		full_path = json_conf[FileToSend];
 	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	request.clear();
@@ -474,7 +456,7 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 				}
 				else {
 					if (ret < 0) {
-						LOG_ERROR_C(connections[fd].get_ip_s());
+						LOG_ERROR_C(connections[fd].get_ip_port_s());
 					#ifdef DEBUG
 						perror("Sendfile failed");
 					#endif // DEBUG
@@ -498,15 +480,15 @@ mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
 	#ifdef DEBUG
 		cout << e.what() << endl;
 	#endif // DEBUG
-		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
-		LOG_CLOSE(connections[fd].get_ip_s());
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
+		LOG_CLOSE(connections[fd].get_ip_port_s());
 		close_connection(fd);
 	}
 	catch (const std::runtime_error& e) {
 	#ifdef DEBUG
 		cout << e.what() << endl;
 	#endif // DEBUG
-		LOG_ERROR("Client:", connections[fd].get_ip_s(),' ', e.what());
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
 		char code = '0';
 		write(fd, &code, sizeof code);
 	}
@@ -527,15 +509,16 @@ void receive_loop::alarm_handler(int sig)
 
 inline co_handle receive_loop::deal_with_http(int fd)
 {
+	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
 	string target_http = "./";
-	if (file_paths.contains(HTTPFiles)) {
-		target_http = file_paths[HTTPFiles];
+	if (json_conf.contains(HTTPFiles)) {
+		target_http = json_conf[HTTPFiles];
 	}
 	auto& request = connections[fd].requests;
 	auto idx = request.find_first_of('/');
 	if (request[idx + 1] == ' ') {
-		if (file_paths.contains(DefaultHTTP))
-			target_http += file_paths[DefaultHTTP];
+		if (json_conf.contains(DefaultPage))
+			target_http += json_conf[DefaultPage];
 		else
 			target_http += "index.html";
 	}
@@ -546,16 +529,21 @@ inline co_handle receive_loop::deal_with_http(int fd)
 	request.clear();
 	string response = "HTTP/1.1 ";
 	try {
-		File send(target_http, false, RDONLY);
+		LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
+	#ifdef DEBUG
+		cout << "Sending: " + target_http << endl;
+	#endif // DEBUG
+		File send_page(target_http, false, RDONLY);
 		response = response + "200 " + "OK\r\n";
-		response += "Content-Length:" + send.size_string() + "\r\n";
-		response += "Connection:close\r\n\r\n";
+		response += "Content-Length: " + send_page.size_string() + "\r\n";
+		response += "Server: Simple-File-Transfer\r\n";
+		response += "Connection: close\r\n\r\n";
 		connections[fd].write(response);
 		off_t off = 0;
-		auto sz = send.size();
+		auto sz = send_page.size();
 		ssize_t ret = 0;
 		do {
-			ret = sendfile(connections[fd].get_fd(), send.get_fd(), &off, sz);
+			ret = sendfile(connections[fd].get_fd(), send_page.get_fd(), &off, sz);
 			if (ret == -1 && errno != EAGAIN) {
 				string err = "Error in sendfile: ";
 				err += GETERR;
@@ -565,19 +553,23 @@ inline co_handle receive_loop::deal_with_http(int fd)
 		} while (ret > 0);
 	}
 	catch (const std::runtime_error& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error ", e.what());
-		auto path = target_http.substr(0, target_http.find_last_of('/') + 1) + "404.html";
-		File not_found(path, false, RDONLY);
+	#ifdef DEBUG
+		cout << e.what() << endl;
+	#endif // DEBUG
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", e.what());
 		response = response + "404 " + "Not Found\r\n";
-		response += "Content-Length:" + not_found.size_string() + "\r\n";
-		response += "Connection:keep-alive\r\n\r\n";
+		response += "Content-Length: 248\r\n";
+		response += "Server: Simple-File-Transfer\r\n";
+		response += "Content-Type: text/html; charset=utf-8\r\n";
+		response += "Connection: close\r\n\r\n";
 		connections[fd].write(response);
-		off_t off = 0;
-		ssize_t sz = not_found.size();
-		sendfile(connections[fd].get_fd(), not_found.get_fd(), &off, sz);
+		connections[fd].write(not_found_html);
 	}
 	catch (const std::domain_error& a) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error ", a.what());
+	#ifdef DEBUG
+		cout << a.what() << endl;
+	#endif // DEBUG
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", a.what());
 		close_connection(fd);
 	}
 	co_return;

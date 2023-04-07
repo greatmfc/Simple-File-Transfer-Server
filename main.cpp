@@ -44,7 +44,6 @@ void usage() {
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
 	cout << "Last modify date: " << LAST_MODIFY << endl;
-	exit(2);
 }
 
 void check_file(char*& path) {
@@ -119,6 +118,7 @@ int main(int argc, char* argv[])
 			break;
 		case 'v':
 			version();
+			exit(2);
 			break; 
 		case 'n':
 			log::get_instance()->no_logfile();
@@ -136,6 +136,9 @@ int main(int argc, char* argv[])
 			exit(3);
 		}
 	}
+#ifdef DEBUG
+	version();
+#endif // DEBUG
 	if (argc <= 2) {
 		std::ios::sync_with_stdio(false);
 		log::get_instance()->init_log();
