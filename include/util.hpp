@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <iostream>
 #include <vector>
+#include <ranges>
 using std::out_of_range;
 using std::runtime_error;
 namespace sc = std::chrono;
@@ -187,6 +188,17 @@ namespace mfcslib {
 		std::unordered_map<T, sc::time_point<sc::system_clock>> _data;
 		sc::seconds _interval = 300s;
 	};
+
+	template<
+		template<typename> typename Container = std::vector,
+		typename StringType = std::string_view>
+	Container<StringType> str_split(StringType str, std::string_view delim) {
+		Container<StringType> cont;
+		for (const auto& word : std::views::split(str, delim)) {
+			cont.emplace_back(StringType(word.begin(), word.end()));
+		}
+		return cont;
+	}
 
 }
 #define _var const auto&s

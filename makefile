@@ -6,7 +6,7 @@ DEBUGFLAGS = -g -DDEBUG -fsanitize=address
 
 WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor
 
-object = main.cpp
+object = src/main.cpp
 
 output = sft.out
 

@@ -4,8 +4,8 @@
 #include <string_view>
 #include <arpa/inet.h>
 #include <filesystem>
-#include "include/json.hpp"
-#include "include/io.hpp"
+#include "../include/json.hpp"
+#include "../include/io.hpp"
 using std::ios;
 using std::ofstream;
 using std::string;

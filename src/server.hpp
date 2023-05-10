@@ -13,8 +13,8 @@
 #include <iostream>
 #include <string_view>
 #include <unordered_map>
-#include "include/coroutine.hpp"
-#include "include/io.hpp"
+#include "../include/coroutine.hpp"
+#include "../include/io.hpp"
 #include "epoll_utility.hpp"
 #include "logger.hpp"
 #ifndef MAXARRSZ
@@ -48,14 +48,8 @@ enum MyEnum
 {
 	FILE_TYPE,
 	MESSAGE_TYPE,
-	NONE_TYPE,
-	HTTP_TYPE,
-	ACCEPT,
-	CLOSE,
-	READ_PRE,
-	READ_MSG,
-	READ_DATA,
-	WRITE_DATA,
+	HTTP_GET_TYPE,
+	HTTP_POST_TPYE,
 	GET_TYPE
 };
 
@@ -106,7 +100,7 @@ private:
 	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
-	co_handle deal_with_http(int fd);
+	co_handle deal_with_http(int fd, int type);
 };
 
 void receive_loop::stop_loop(int sig)
@@ -165,8 +159,6 @@ void receive_loop::loop()
 #ifdef DEBUG
 	cout << "Listening on local: " + localserver.get_ip_port_s() << endl;
 #endif // DEBUG
-	//thread_pool tp;
-	//tp.init_pool();
 	while (running) {
 		int count = epoll_instance.wait_for_epoll(-1);
 		if (count < 0) [[unlikely]] {
@@ -227,21 +219,21 @@ void receive_loop::loop()
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
 				if (task.empty() || task.done()) {
-					switch (decide_action(react_fd))
+					int type = decide_action(react_fd);
+					switch (type)
 					{
 					case FILE_TYPE:
 						task = deal_with_file(react_fd);
 						break;
 					case MESSAGE_TYPE:
-						//tp.submit_to_pool(&receive_loop::deal_with_mesg,this,react_fd);
 						deal_with_mesg(react_fd);
 						break;
 					case GET_TYPE:
-						//tp.submit_to_pool(&receive_loop::deal_with_get_file, this, react_fd);
 						task = deal_with_get_file(react_fd);
 						break;
-					case HTTP_TYPE:
-						task = deal_with_http(react_fd);
+					case HTTP_GET_TYPE: [[fallthrough]];
+					case HTTP_POST_TPYE:
+						task = deal_with_http(react_fd, type);
 						break;
 					default:
 						LOG_INFO(
@@ -266,7 +258,6 @@ void receive_loop::loop()
 			}
 		}
 	}
-	//tp.shutdown_pool();
 	LOG_INFO("Server quits.");
 	exit(0);
 }
@@ -300,8 +291,8 @@ int receive_loop::decide_action(int fd)
 	case 'f':return FILE_TYPE;
 	case 'g':return GET_TYPE;
 	case 'm':return MESSAGE_TYPE;
-	case 'G': [[fallthrough]];
-	case 'P':return HTTP_TYPE;
+	case 'G':return HTTP_GET_TYPE;
+	case 'P':return HTTP_POST_TPYE;
 	}
 	end:return -1;
 }
@@ -412,7 +403,7 @@ void receive_loop::deal_with_mesg(int fd)
 	connections[fd].requests.clear();
 }
 
-mfcslib::co_handle receive_loop::deal_with_get_file(int fd)
+co_handle receive_loop::deal_with_get_file(int fd)
 {
 	string& request = connections[fd].requests;
 	LOG_INFO("Receive file request from:",
@@ -507,7 +498,7 @@ void receive_loop::alarm_handler(int sig)
 	errno = save_errno;
 }
 
-inline co_handle receive_loop::deal_with_http(int fd)
+co_handle receive_loop::deal_with_http(int fd, int type)
 {
 	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
 	string target_http = "./";
@@ -525,6 +516,11 @@ inline co_handle receive_loop::deal_with_http(int fd)
 	else {
 		auto end_idx = request.find(' ', idx);
 		target_http += request.substr(idx + 1, end_idx - idx - 1);
+	}
+	if (target_http.back() == '?')
+		target_http.pop_back();
+	if (type == HTTP_POST_TPYE) {
+		string post_content = str_split(request, "\r\n").back();
 	}
 	request.clear();
 	string response = "HTTP/1.1 ";
