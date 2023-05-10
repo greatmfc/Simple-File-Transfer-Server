@@ -3,7 +3,7 @@
 #include <random>
 #include <chrono>
 #include <fstream>
-#include "../client.hpp"
+#include "../src/client.hpp"
 using std::cerr;
 using std::array;
 using std::stoi;

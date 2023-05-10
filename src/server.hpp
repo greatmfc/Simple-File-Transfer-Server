@@ -123,7 +123,7 @@ void receive_loop::loop()
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
 	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
-	epoll_instance.add_fd_or_event(pipe_fd[0], false, true, 0);
+	epoll_instance.add_fd_or_event(pipe_fd[0], false, false, 0);
 	{
 		try {
 			File settings("./sft.json", false, RDONLY);
@@ -218,8 +218,8 @@ void receive_loop::loop()
 				auto& di=connections[react_fd];
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
+				int type = decide_action(react_fd);
 				if (task.empty() || task.done()) {
-					int type = decide_action(react_fd);
 					switch (type)
 					{
 					case FILE_TYPE:
@@ -265,13 +265,13 @@ void receive_loop::loop()
 int receive_loop::decide_action(int fd)
 {
 	ssize_t ret = 0;
-	char buffer[256]{ 0 };
+	char buffer[512]{ 0 };
 	string& request = connections[fd].requests;
 	while (true) {
-		ret = read(fd, buffer, 255);
+		ret = read(fd, buffer, 511);
 		if (ret <= 0) break;
 		request += buffer;
-		memset(buffer, 0, 256);
+		memset(buffer, 0, 511);
 	}
 	if (ret < 0 && errno != EAGAIN) {
 		LOG_ERROR_C(connections[fd].get_ip_port_s());
@@ -320,7 +320,7 @@ co_handle receive_loop::deal_with_file(int fd)
 			while (true) {
 				auto currentRet = bufferForFile.read(fd, ret, bytesLeft);
 			#ifdef DEBUG
-				cout << "Return from read:" << currentRet << endl;
+				//cout << "Return from read:" << currentRet << endl;
 			#endif // DEBUG
 				if (currentRet < 0) {
 					co_yield 1;
@@ -329,7 +329,7 @@ co_handle receive_loop::deal_with_file(int fd)
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
-				//progress_bar(ret, size);
+				progress_bar(ret, size);
 			#endif // DEBUG
 				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
@@ -501,59 +501,64 @@ void receive_loop::alarm_handler(int sig)
 co_handle receive_loop::deal_with_http(int fd, int type)
 {
 	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
-	string target_http = "./";
+	string http_path = "./";
 	if (json_conf.contains(HTTPFiles)) {
-		target_http = json_conf[HTTPFiles];
+		http_path = json_conf[HTTPFiles];
 	}
-	auto& request = connections[fd].requests;
-	auto idx = request.find_first_of('/');
-	if (request[idx + 1] == ' ') {
-		if (json_conf.contains(DefaultPage))
-			target_http += json_conf[DefaultPage];
-		else
-			target_http += "index.html";
-	}
-	else {
-		auto end_idx = request.find(' ', idx);
-		target_http += request.substr(idx + 1, end_idx - idx - 1);
-	}
-	if (target_http.back() == '?')
-		target_http.pop_back();
-	if (type == HTTP_POST_TPYE) {
-		string post_content = str_split(request, "\r\n").back();
-	}
-	request.clear();
-	string response = "HTTP/1.1 ";
 	try {
-		LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
-	#ifdef DEBUG
-		cout << "Sending: " + target_http << endl;
-	#endif // DEBUG
-		File send_page(target_http, false, RDONLY);
-		response = response + "200 " + "OK\r\n";
-		response += "Content-Length: " + send_page.size_string() + "\r\n";
-		response += "Server: Simple-File-Transfer\r\n";
-		response += "Connection: close\r\n\r\n";
-		connections[fd].write(response);
-		off_t off = 0;
-		auto sz = send_page.size();
-		ssize_t ret = 0;
-		do {
-			ret = sendfile(connections[fd].get_fd(), send_page.get_fd(), &off, sz);
-			if (ret == -1 && errno != EAGAIN) {
-				string err = "Error in sendfile: ";
-				err += GETERR;
-				throw std::domain_error(err);
+		while (true) {
+			string target_http = http_path;
+			auto& request = connections[fd].requests;
+			auto idx = request.find_first_of('/');
+			if (request[idx + 1] == ' ') {
+				if (json_conf.contains(DefaultPage))
+					target_http += json_conf[DefaultPage];
+				else
+					target_http += "index.html";
 			}
-			else co_yield 1;
-		} while (ret > 0);
+			else {
+				auto end_idx = request.find(' ', idx);
+				target_http += request.substr(idx + 1, end_idx - idx - 1);
+			}
+			if (target_http.back() == '?')
+				target_http.pop_back();
+			if (type == HTTP_POST_TPYE) {
+				string post_content = str_split(request, "\r\n").back();
+			}
+			request.clear();
+			LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
+		#ifdef DEBUG
+			cout << "Sending: " + target_http << endl;
+		#endif // DEBUG
+			File send_page(target_http, false, RDONLY);
+			string response = "HTTP/1.1 200 OK\r\n";
+			response += "Content-Length: " + send_page.size_string() + "\r\n";
+			response += "Server: Simple-File-Transfer\r\n";
+			response += "Connection: keep-alive\r\n\r\n";
+			connections[fd].write(response);
+			loff_t off = 0;
+			auto sz = send_page.size();
+			ssize_t ret = 0;
+			do {
+				ret = sendfile64(connections[fd].get_fd(), send_page.get_fd(), &off, sz);
+				if (ret == -1 && errno != EAGAIN) {
+					string err = "Error in sendfile: ";
+					err += GETERR;
+					throw std::domain_error(err);
+				}
+				else co_yield 1;
+			} while (off != (loff_t)sz);
+		#ifdef DEBUG
+			cout << "Finish sending: " + send_page.filename() << endl;
+		#endif // DEBUG
+		}
 	}
 	catch (const std::runtime_error& e) {
 	#ifdef DEBUG
 		cout << e.what() << endl;
 	#endif // DEBUG
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", e.what());
-		response = response + "404 " + "Not Found\r\n";
+		string response = "HTTP/1.1 404 Not Found\r\n";
 		response += "Content-Length: 248\r\n";
 		response += "Server: Simple-File-Transfer\r\n";
 		response += "Content-Type: text/html; charset=utf-8\r\n";

@@ -10,15 +10,15 @@ object = src/main.cpp
 
 output = sft.out
 
-LIB = -pthread
+LIB = -lstdc++
 
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o $(output) -O3 -march=native
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O3 -march=native
 
 testing: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) -o test.out $(DEBUGFLAGS)
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)
 
 install: $(output)
 	install -m 755 $(output) /usr/bin/
