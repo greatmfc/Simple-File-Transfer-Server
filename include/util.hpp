@@ -200,6 +200,54 @@ namespace mfcslib {
 		return cont;
 	}
 
+	template<typename P, typename T>
+	constexpr int64_t strchr_c(const P* str, const T ch) {
+		int64_t idx = 0;
+		while (*str) {
+			if (*str == ch) return idx;
+			++str;
+			++idx;
+		}
+		return -1;
+	}
+
+	constexpr inline char _single_hex_to_char(char h) {
+		if (h >= '0' && h <= '9')
+			return h - 48;
+		else
+			return h - 55;
+	}
+	constexpr inline char hex_str_to_char(const std::string_view& str) {
+		return char((_single_hex_to_char(str[0]) << 4) + _single_hex_to_char(str[1]));
+	}
+
+	constexpr std::string decode_url(const std::string& str) {
+		auto lpt = str.data();
+		auto length = str.length();
+		auto ridx = str.find('%');
+		if (ridx == std::string::npos) return str;
+		std::string ret_str(lpt, ridx);
+		while (ridx < length) {
+			lpt += ridx + 1;
+			ret_str.push_back(hex_str_to_char(lpt));
+			if (*(lpt + 2) == '%') {
+				ridx = 2;
+				continue;
+			}
+			else if (*(lpt + 2) == 0) break;
+			lpt += 2;
+			ridx = strchr_c(lpt, '%');
+			if (ridx == UINT64_MAX) {
+				ret_str.append(lpt, str.data() + length);
+				break;
+			}
+			else {
+				ret_str.append(lpt, lpt + ridx);
+			}
+		}
+		return ret_str;
+	}
+
 }
 #define _var const auto&s
 #define _in :

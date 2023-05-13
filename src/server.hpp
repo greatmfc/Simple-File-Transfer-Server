@@ -526,6 +526,7 @@ co_handle receive_loop::deal_with_http(int fd, int type)
 				string post_content = str_split(request, "\r\n").back();
 			}
 			request.clear();
+			target_http = decode_url(target_http);
 			LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
 		#ifdef DEBUG
 			cout << "Sending: " + target_http << endl;
