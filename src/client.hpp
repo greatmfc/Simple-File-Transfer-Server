@@ -21,7 +21,7 @@ using std::invalid_argument;
 using std::string_view;
 using namespace mfcslib;
 
-void send_msg_to(mfcslib::Socket& target, const string_view& msg) {
+void send_msg_to(mfcslib::NetworkSocket& target, const string_view& msg) {
 	string request("m/");
 	request += msg;
 	target.write(request);
@@ -30,7 +30,7 @@ void send_msg_to(mfcslib::Socket& target, const string_view& msg) {
 		perror("Something wrong with the server");
 	}
 }
-void send_file_to(mfcslib::Socket& target, mfcslib::File& file) {
+void send_file_to(mfcslib::NetworkSocket& target, mfcslib::File& file) {
 	string request = "f/" + file.filename() + '/' + file.size_string();
 	target.write(request);
 	char code = target.read();
@@ -57,7 +57,7 @@ void send_file_to(mfcslib::Socket& target, mfcslib::File& file) {
 	}
 	cout << '\n';
 }
-void get_file_from(mfcslib::Socket& tartget, const string& file) {
+void get_file_from(mfcslib::NetworkSocket& tartget, const string& file) {
 	string request = "g/";
 	auto idx = file.find('/');
 	if (idx != string::npos) {

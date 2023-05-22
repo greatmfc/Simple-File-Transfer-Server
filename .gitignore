@@ -371,3 +371,4 @@ FodyWeavers.xsd
 /file_exchange.vcxproj
 /file_exchange.vcxproj.filters
 /file_exchange.sln
+/thirdparty/fmt

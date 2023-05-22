@@ -53,10 +53,21 @@ enum MyEnum
 	GET_TYPE
 };
 
-struct data_info :public mfcslib::Socket
+unordered_map<string, string> content_type = {
+	{".html","Content-Type: text/html; charset=utf-8"},
+	{".txt","Content-Type: text/plain; charset=utf-8"},
+	{".jpg","Content-Type: image/jpeg;"},
+	{".png","Content-Type: image/png;"},
+	{".mp4","Content-Type: video/mpeg4;"},
+	{".mkv","Content-Type: video/mkv;"},
+	{".pdf","Content-Type: application/pdf;"},
+	{"default","Content-Type: application/octet-stream;"}
+};
+
+struct data_info :public mfcslib::NetworkSocket
 {
-	data_info& operator=(mfcslib::Socket&& other) {
-		mfcslib::Socket* pt_other = &other;
+	data_info& operator=(mfcslib::NetworkSocket&& other) {
+		mfcslib::NetworkSocket* pt_other = &other;
 		int* pt_fd = reinterpret_cast<int*>(pt_other);
 		sockaddr_in* pt_addr = reinterpret_cast<sockaddr_in*>(pt_fd + 1);
 		this->_fd = *pt_fd;
@@ -535,6 +546,7 @@ co_handle receive_loop::deal_with_http(int fd, int type)
 			string response = "HTTP/1.1 200 OK\r\n";
 			response += "Content-Length: " + send_page.size_string() + "\r\n";
 			response += "Server: Simple-File-Transfer\r\n";
+			response += content_type[send_page.get_type()] + "\r\n";
 			response += "Connection: keep-alive\r\n\r\n";
 			connections[fd].write(response);
 			loff_t off = 0;

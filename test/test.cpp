@@ -32,7 +32,7 @@ auto main(int argc, char* argv[])->int {
 	auto content = file + std::to_string(engine()) + std::to_string(engine()) + std::to_string(engine());
 	mfcslib::File instance(file, true, O_RDWR);
 	instance.write(content);
-	mfcslib::Socket remote(ip.c_str(), (uint16_t)port);
+	mfcslib::NetworkSocket remote(ip.c_str(), (uint16_t)port);
 	send_msg_to(remote, "This is a test message.");
 	std::cout << "Finishing message sending.\n";
 	send_file_to(remote, instance);

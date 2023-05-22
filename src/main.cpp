@@ -43,7 +43,7 @@ void usage() {
 
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
-	cout << "Last modified date: " << LAST_MODIFY << endl;
+	cout << "Last modified date: " << LAST_MODIFIED << endl;
 }
 
 void check_file(char*& path) {
@@ -150,7 +150,7 @@ int main(int argc, char* argv[])
 		string ip;
 		uint16_t port = 0;
 		parse_arg(argv[optind], ip, port);
-		mfcslib::Socket server(ip, port);
+		mfcslib::NetworkSocket server(ip, port);
 		if (path != nullptr) {
 			check_file(path);
 			mfcslib::File file(path, false, 0);

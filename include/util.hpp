@@ -192,7 +192,7 @@ namespace mfcslib {
 	template<
 		template<typename> typename Container = std::vector,
 		typename StringType = std::string_view>
-	Container<StringType> str_split(StringType str, std::string_view delim) {
+	constexpr Container<StringType> str_split(StringType str, std::string_view delim) {
 		Container<StringType> cont;
 		for (const auto& word : std::views::split(str, delim)) {
 			cont.emplace_back(StringType(word.begin(), word.end()));

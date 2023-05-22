@@ -136,27 +136,33 @@ namespace mfcslib {
 		string filename() {
 			return _path.filename().string();
 		}
+		string get_type() {
+			auto _s = _path.filename().string();
+			if (auto idx = _s.find_last_of('.'); idx != std::string::npos)
+				return _s.substr(idx);
+			else return {};
+		}
 
 	private:
 		path _path;
 	};
 
-	class Socket :public basic_io
+	class NetworkSocket :public basic_io
 	{
 	public:
-		Socket() = default;
-		Socket(const Socket&) = delete;
-		Socket(Socket&& other)noexcept {
+		NetworkSocket() = default;
+		NetworkSocket(const NetworkSocket&) = delete;
+		NetworkSocket(NetworkSocket&& other)noexcept {
 			this->_fd = other._fd;
 			other._fd = -1;
 			this->ip_port = other.ip_port;
 			::memset(&other.ip_port, 0, sizeof(other.ip_port));
 		}
-		Socket(int fd, sockaddr_in addr_info){
+		NetworkSocket(int fd, sockaddr_in addr_info){
 			_fd = fd;
 			ip_port = addr_info;
 		}
-		Socket(const string& ip, uint16_t port) {
+		NetworkSocket(const string& ip, uint16_t port) {
 			memset(&ip_port, 0, sizeof ip_port);
 			ip_port.sin_family = AF_INET;
 			ip_port.sin_addr.s_addr = inet_addr(ip.c_str());
@@ -187,11 +193,11 @@ namespace mfcslib {
 		std::string get_ip_port_s() {
 			return get_ip_s() + ':' + get_port_s();
 		}
-		~Socket() {
+		~NetworkSocket() {
 			this->close();
 		}
 
-		mfcslib::Socket& operator=(mfcslib::Socket&& other) {
+		mfcslib::NetworkSocket& operator=(mfcslib::NetworkSocket&& other) {
 			this->_fd = other._fd;
 			other._fd = -1;
 			this->ip_port = other.ip_port;
@@ -203,7 +209,7 @@ namespace mfcslib {
 		sockaddr_in ip_port;
 	};
 
-	class ServerSocket :public Socket
+	class ServerSocket :public NetworkSocket
 	{
 	public:
 		ServerSocket() = delete;
@@ -234,7 +240,7 @@ namespace mfcslib {
 				throw runtime_error(strerror(errno));
 			}
 		}
-		Socket accpet() {
+		NetworkSocket accpet() {
 			sockaddr_in addrs{};
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
@@ -242,7 +248,7 @@ namespace mfcslib {
 				if (errno != EAGAIN) throw runtime_error(strerror(errno));
 				else return {};
 			}
-			return Socket(ret, addrs);
+			return NetworkSocket(ret, addrs);
 		}
 		~ServerSocket() {}
 	};
