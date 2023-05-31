@@ -21,7 +21,7 @@ public:
 		close(epoll_fd);
 	}
 
-	void add_fd_or_event(int fd, bool one_shot, bool use_et, int ev) {
+	void add_fd_or_event(int fd, bool one_shot, bool use_et, unsigned ev) {
 		epoll_event events;
 		events.data.fd = fd;
 

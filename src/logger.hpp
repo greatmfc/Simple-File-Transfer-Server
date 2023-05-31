@@ -50,6 +50,10 @@ public:
 			content += '\n';
 		}
 		log_file.write(content);
+	#ifdef DEBUG
+		std::cerr << content;
+		std::cerr.flush();
+	#endif // DEBUG
 	}
 
 	void init_log() {
