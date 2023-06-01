@@ -492,9 +492,7 @@ co_handle receive_loop::deal_with_http(int fd, int type)
 			}
 			if (target_http.back() == '?')
 				target_http.pop_back();
-			if (type == HTTP_POST_TPYE) {
-				string post_content = str_split(request, "\r\n").back();
-			}
+			auto header_lines = str_split(request, "\r\n");
 			request.clear();
 			target_http = decode_url(target_http);
 			LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
@@ -525,6 +523,16 @@ co_handle receive_loop::deal_with_http(int fd, int type)
 				}
 			} while (off != (loff_t)sz);
 			LOG_INFO("Finish sending: " + send_page.filename());
+			for (auto& line : header_lines) {
+				if (line.starts_with("Connection:")) {
+					if (line.ends_with("close")) {
+						close_connection(fd);
+						LOG_CLOSE(connections[fd].get_ip_port_s());
+						co_return;
+					}
+					break;
+				}
+			}
 			co_yield 1;
 		}
 	}

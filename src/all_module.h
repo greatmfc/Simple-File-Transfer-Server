@@ -23,6 +23,6 @@
 	a release-version when it is '2'.
 */
 #define VERSION "1.11.10.1"
-#define LAST_MODIFIED 20230531L
+#define LAST_MODIFIED 20230601L
 
 #endif //! AM_H
