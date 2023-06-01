@@ -17,6 +17,7 @@
 #include "../include/io.hpp"
 #include "epoll_utility.hpp"
 #include "logger.hpp"
+#include "fields.h"
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
 #define NUMSTOP 20'000
@@ -61,7 +62,7 @@ unordered_map<string, string> content_type = {
 	{".mp4","Content-Type: video/mpeg4;"},
 	{".mkv","Content-Type: video/mkv;"},
 	{".pdf","Content-Type: application/pdf;"},
-	{".zip","Content-Type: application/zip"},
+	{".zip","Content-Type: application/zip;"},
 	{".*","Content-Type: application/octet-stream;"}
 };
 
@@ -95,11 +96,12 @@ private:
 		FileReceived,
 		FileToSend,
 		HTTPFiles,
-		DefaultPage
+		DefaultPage,
+		ListenPort
 	};
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connections;
-	unordered_map<int,string> json_conf;
+	unordered_map<int, string> json_conf;
 	static inline bool running;
 	static inline int pipe_fd[2];
 
@@ -109,7 +111,7 @@ private:
 	co_handle deal_with_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
-	co_handle deal_with_http(int fd, int type);
+	co_handle deal_with_http(int fd);
 };
 
 void receive_loop::stop_loop(int sig)
@@ -127,12 +129,7 @@ void receive_loop::loop()
 		error_msg += GETERR;
 		throw runtime_error(error_msg);
 	}
-	mfcslib::ServerSocket localserver(DEFAULT_PORT);
-	running = true;
-	int socket_fd = localserver.get_fd();
-	localserver.set_nonblocking();
-	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
-	epoll_instance.add_fd_or_event(pipe_fd[0], false, false, 0);
+	auto port = -1;
 	{
 		try {
 			File settings("./sft.json", false, RDONLY);
@@ -157,10 +154,20 @@ void receive_loop::loop()
 				else if (key == "DefaultPage" && val != nullptr) {
 					json_conf[DefaultPage] = *val;
 				}
+				else if (key == f_ListenPort) {
+					auto val = value.at<long long>();
+					if (val) port = *val;
+				}
 			}
 		}
 		catch (std::exception& e) {}
 	}
+	mfcslib::ServerSocket localserver(port == -1 ? DEFAULT_PORT : port);
+	running = true;
+	int socket_fd = localserver.get_fd();
+	localserver.set_nonblocking();
+	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
+	epoll_instance.add_fd_or_event(pipe_fd[0], false, false, 0);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME.count());
 	LOG_INFO("Server starts.");
@@ -213,7 +220,7 @@ void receive_loop::loop()
 				}
 			}
 			else if (epoll_instance.events[i].events & EPOLLIN) {
-				auto& di=connections[react_fd];
+				auto& di = connections[react_fd];
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
 				int type = decide_action(react_fd);
@@ -231,7 +238,7 @@ void receive_loop::loop()
 						break;
 					case HTTP_GET_TYPE: [[fallthrough]];
 					case HTTP_POST_TPYE:
-						task = deal_with_http(react_fd, type);
+						task = deal_with_http(react_fd);
 						break;
 					default:
 						LOG_INFO(
@@ -468,7 +475,7 @@ void receive_loop::alarm_handler(int sig)
 	errno = save_errno;
 }
 
-co_handle receive_loop::deal_with_http(int fd, int type)
+co_handle receive_loop::deal_with_http(int fd)
 {
 	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
 	string http_path = "./";
