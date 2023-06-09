@@ -5,7 +5,6 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <locale>
-#include <csignal>
 #include <vector>
 #include "all_module.h"
 using std::locale;
@@ -44,6 +43,7 @@ void usage() {
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
 	cout << "Last modified date: " << LAST_MODIFIED << endl;
+	cout << "Compiled time: " << __DATE__ << ' ' << __TIME__ << endl;
 }
 
 void check_file(char*& path) {
