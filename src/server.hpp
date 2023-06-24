@@ -34,7 +34,7 @@
 #define LOG_ERROR_C(_addr) LOG_ERROR("Client:",_addr,' ',strerror(errno))
 #define GETERR strerror(errno)
 #define DEFAULT_PORT 9007
-#define ALARM_TIME 300s
+#define ALARM_TIME 1800s
 #define TIMEOUT 30000
 using std::cout;
 using std::endl;
@@ -156,7 +156,7 @@ void receive_loop::loop()
 				}
 				else if (key == f_ListenPort) {
 					auto val = value.at<long long>();
-					if (val) port = *val;
+					if (val) port = (int)*val;
 				}
 			}
 		}
@@ -223,8 +223,8 @@ void receive_loop::loop()
 				auto& di = connections[react_fd];
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
-				int type = decide_action(react_fd);
 				if (task.empty() || task.done()) {
+					int type = decide_action(react_fd);
 					switch (type)
 					{
 					case FILE_TYPE:
@@ -269,14 +269,17 @@ void receive_loop::loop()
 
 int receive_loop::decide_action(int fd)
 {
-	char buffer[1024]{ 0 };
 	string& request = connections[fd].requests;
-	auto ret = read(fd, buffer, sizeof buffer);
-	if (ret < 0 && errno != EAGAIN) {
+	auto ret = 0ll;
+	do {
+		char buffer[1024]{ 0 };
+		ret = read(fd, buffer, 1023);
+		request += buffer;
+	} while (ret > 0);
+	if (ret <= 0 && errno != EAGAIN) {
 		LOG_ERROR_C(connections[fd].get_ip_port_s());
 		return -1;
 	}
-	request = buffer;
 #ifdef DEBUG
 	//cout << "Read msg from client: " << request << endl;
 #endif // DEBUG
@@ -486,6 +489,12 @@ co_handle receive_loop::deal_with_http(int fd)
 		while (true) {
 			string target_http = http_path;
 			auto& request = connections[fd].requests;
+			for (;;) {
+				char buffer[1024]{ 0 };
+				auto ret = read(fd, buffer, 1023);
+				if (ret <= 0) break;
+				request += buffer;
+			}
 			auto idx = request.find_first_of('/');
 			if (request[idx + 1] == ' ') {
 				if (json_conf.contains(DefaultPage))
