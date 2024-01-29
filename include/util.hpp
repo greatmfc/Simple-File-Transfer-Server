@@ -117,10 +117,11 @@ namespace mfcslib {
 		"\r[**********]",
 	};
 	template<typename T, typename R>
-	inline bool progress_bar(T num1, R num2) {
+	inline bool progress_bar(T num1, R num2) noexcept {
 		double percent = static_cast<double>(num1) / static_cast<double>(num2);
 		if (percent > 1 || percent <= 0) {
-			throw std::invalid_argument("Wrong percent");
+			std::cout << "Invalid percentage: " << std::to_string(num1) << "/" << std::to_string(num2) << std::endl;
+			return false;
 		}
 		uintmax_t index = uintmax_t(percent * 10);
 		std::cout << all_percent[index] << ' ' << std::to_string(percent * 100) << '%';

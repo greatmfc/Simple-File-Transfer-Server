@@ -229,7 +229,7 @@ namespace mfcslib {
 			if (_fd <= 0) {
 				throw runtime_error(strerror(errno));
 			}
-			char flag = 1;
+			int flag = 1;
 			setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 			int ret = ::bind(_fd, (sockaddr*)&ip_port, sizeof(ip_port));
 			if (ret < 0) {
