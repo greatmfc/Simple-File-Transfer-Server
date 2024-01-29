@@ -6,6 +6,8 @@ DEBUGFLAGS = -g -DDEBUG -fsanitize=address
 
 WARMFLAGS = -Wall -Wextra -Wpointer-arith -Wnon-virtual-dtor
 
+OPTFLAGS = -fno-rtti -O2 -march=native
+
 object = src/main.cpp
 
 output = sft.out
@@ -15,7 +17,7 @@ LIB = -lstdc++
 .PHONY: clean
 
 sft: $(object)
-	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) -O3 -march=native
+	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o $(output) $(OPTFLAGS)
 
 testing: $(object)
 	$(CXX) $(STDVER) $(WARMFLAGS) $(object) $(LIB) -o test.out $(DEBUGFLAGS)

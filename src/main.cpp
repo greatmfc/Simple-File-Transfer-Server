@@ -4,10 +4,8 @@
 #include <cstring>
 #include <cstdio>
 #include <sys/stat.h>
-#include <locale>
 #include <vector>
 #include "all_module.h"
-using std::locale;
 using std::cout;
 using std::endl;
 using std::vector;
@@ -43,10 +41,10 @@ void usage() {
 void version() {
 	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
 	cout << "Last modified date: " << LAST_MODIFIED << endl;
-	cout << "Build date: " << __DATE__ << ' ' << __TIME__ << endl;
+	cout << "Built date: " << __DATE__ << ' ' << __TIME__ << endl;
 }
 
-void check_file(char*& path) {
+void check_file(char* path) {
 	if (strchr(path, '/') == NULL) {
 		fprintf(stderr, "Invalid path. Please check the path.\n");
 		exit(1);
@@ -101,9 +99,6 @@ int main(int argc, char* argv[])
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
 	static vector<int> sig_to_register = { SIGINT,SIGSEGV,SIGTERM,SIGPIPE };
-#ifndef __aarch64__
-	locale::global(locale("en_US.UTF-8"));
-#endif // !__aarch64__
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{

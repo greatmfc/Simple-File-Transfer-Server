@@ -18,6 +18,7 @@
 #include "epoll_utility.hpp"
 #include "logger.hpp"
 #include "fields.h"
+#include "../include/http.hpp"
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
 #define NUMSTOP 20'000
@@ -52,18 +53,6 @@ enum MyEnum
 	HTTP_GET_TYPE,
 	HTTP_POST_TPYE,
 	GET_TYPE
-};
-
-unordered_map<string, string> content_type = {
-	{".html","Content-Type: text/html; charset=utf-8"},
-	{".txt","Content-Type: text/plain; charset=utf-8"},
-	{".jpg","Content-Type: image/jpeg;"},
-	{".png","Content-Type: image/png;"},
-	{".mp4","Content-Type: video/mpeg4;"},
-	{".mkv","Content-Type: video/mkv;"},
-	{".pdf","Content-Type: application/pdf;"},
-	{".zip","Content-Type: application/zip;"},
-	{".*","Content-Type: application/octet-stream;"}
 };
 
 struct data_info :public mfcslib::NetworkSocket
@@ -101,7 +90,7 @@ private:
 	};
 	epoll_utility epoll_instance;
 	unordered_map<int, data_info> connections;
-	unordered_map<int, string> json_conf;
+	unordered_map<string, string> json_conf;
 	static inline bool running;
 	static inline int pipe_fd[2];
 
@@ -129,40 +118,33 @@ void receive_loop::loop()
 		error_msg += GETERR;
 		throw runtime_error(error_msg);
 	}
-	auto port = -1;
+	uint16_t port = DEFAULT_PORT;
 	{
 		try {
 			File settings("./sft.json", false, RDONLY);
 			json_parser js(settings);
+			json_conf[f_HttpPath] = "./";
+			json_conf[f_FileReceived] = "./";
+			json_conf[f_FileToSend] = "./";
+			json_conf[f_DefaultPage] = "index.html";
 			for (auto& [key, value] : js.get_obj()) {
 				auto val = value.at<string>();
-				if (key == "HttpPath" && val != nullptr) {
-					json_conf[HTTPFiles] = *val;
-					if (json_conf[HTTPFiles].back() != '/') json_conf[HTTPFiles] += '/';
-					create_directory(json_conf[HTTPFiles]);
-				}
-				else if (key == "FileReceived" && val != nullptr) {
-					json_conf[FileReceived] = *val;
-					if (json_conf[FileReceived].back() != '/') json_conf[FileReceived] += '/';
-					create_directory(json_conf[FileReceived]);
-				}
-				else if (key == "FileToSend" && val != nullptr) {
-					json_conf[FileToSend] = *val;
-					if (json_conf[FileToSend].back() != '/') json_conf[FileToSend] += '/';
-					create_directory(json_conf[FileToSend]);
-				}
-				else if (key == "DefaultPage" && val != nullptr) {
-					json_conf[DefaultPage] = *val;
-				}
-				else if (key == f_ListenPort) {
+				if (key == f_ListenPort) {
 					auto val = value.at<long long>();
-					if (val) port = (int)*val;
+					if (val) port = (uint16_t)*val;
+					continue;
+				}
+				if (string_view str = *val; str != "")
+					json_conf[key] = str;
+				if (key != f_DefaultPage) {
+					if (json_conf[key].back() != '/') json_conf[key] += '/';
+					create_directory(json_conf[key]);
 				}
 			}
 		}
 		catch (std::exception& e) {}
 	}
-	mfcslib::ServerSocket localserver(port == -1 ? DEFAULT_PORT : port);
+	mfcslib::ServerSocket localserver(port);
 	running = true;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
@@ -306,9 +288,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	LOG_INFO("Receiving file from:", connections[fd].get_ip_port_s(), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
-	string name = "./";
-	if (json_conf.contains(FileReceived))
-		name = json_conf[FileReceived];
+	string name = json_conf[f_FileReceived];
 	name += name_size.substr(0, idx);
 	mfcslib::File output_file(name, true, O_WRONLY);
 	try {
@@ -395,9 +375,7 @@ co_handle receive_loop::deal_with_get_file(int fd)
 	LOG_INFO("Receive file request from:",
 		connections[fd].get_ip_port_s(), ' ',
 		&request[2]);
-	string full_path("./");
-	if(json_conf.contains(FileToSend))
-		full_path = json_conf[FileToSend];
+	string full_path = json_conf[f_FileToSend];
 	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	request.clear();
@@ -481,13 +459,9 @@ void receive_loop::alarm_handler(int sig)
 co_handle receive_loop::deal_with_http(int fd)
 {
 	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
-	string http_path = "./";
-	if (json_conf.contains(HTTPFiles)) {
-		http_path = json_conf[HTTPFiles];
-	}
 	try {
 		while (true) {
-			string target_http = http_path;
+			string target_http = json_conf[f_HttpPath];
 			auto& request = connections[fd].requests;
 			for (;;) {
 				char buffer[1024]{ 0 };
@@ -495,35 +469,25 @@ co_handle receive_loop::deal_with_http(int fd)
 				if (ret <= 0) break;
 				request += buffer;
 			}
-			auto idx = request.find_first_of('/');
-			if (request[idx + 1] == ' ') {
-				if (json_conf.contains(DefaultPage))
-					target_http += json_conf[DefaultPage];
-				else
-					target_http += "index.html";
-			}
-			else {
-				auto end_idx = request.find(' ', idx);
-				target_http += request.substr(idx + 1, end_idx - idx - 1);
-			}
-			if (target_http.back() == '?')
-				target_http.pop_back();
-			auto header_lines = str_split(request, "\r\n");
+			auto parse_result = parse_http_request(request);
 			request.clear();
-			target_http = decode_url(target_http);
+			auto& request_path = parse_result[hd_path];
+			if (request_path != "") {
+				if (request_path.back() == '?')
+					request_path.pop_back();
+				target_http += decode_url(request_path);
+			}
+			else
+				target_http += json_conf[f_DefaultPage];
 			LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
 			File send_page(target_http, false, RDONLY);
-			string response = "HTTP/1.1 200 OK\r\n";
-			response += "Content-Length: " + send_page.size_string() + "\r\n";
-			response += "Server: Simple-File-Transfer\r\n";
-			try {
-				response += content_type.at(send_page.get_type()) + "\r\n";
-			}
-			catch (const std::exception& e) {
-				response += content_type[".*"] + "\r\n";
-			}
-			response += "Connection: keep-alive\r\n\r\n";
-			connections[fd].write(response);
+			response_header response(200);
+			response.add_content_length(send_page);
+			response.add_server_info();
+			response.add_content_type(send_page.get_type());
+			response.add_connection_type(false);
+			response.add_blank_line();
+			connections[fd].write(response.data());
 			loff_t off = 0;
 			auto sz = send_page.size();
 			ssize_t ret = 0;
@@ -539,27 +503,23 @@ co_handle receive_loop::deal_with_http(int fd)
 				}
 			} while (off != (loff_t)sz);
 			LOG_INFO("Finish sending: " + send_page.filename());
-			for (auto& line : header_lines) {
-				if (line.starts_with("Connection:")) {
-					if (line.ends_with("close")) {
-						close_connection(fd);
-						LOG_CLOSE(connections[fd].get_ip_port_s());
-						co_return;
-					}
-					break;
-				}
+			if (parse_result[hd_connection] == "close") {
+				close_connection(fd);
+				LOG_CLOSE(connections[fd].get_ip_port_s());
+				co_return;
 			}
 			co_yield 1;
 		}
 	}
 	catch (const std::runtime_error& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", e.what());
-		string response = "HTTP/1.1 404 Not Found\r\n";
-		response += "Content-Length: 248\r\n";
-		response += "Server: Simple-File-Transfer\r\n";
-		response += "Content-Type: text/html; charset=utf-8\r\n";
-		response += "Connection: keep-alive\r\n\r\n";
-		connections[fd].write(response);
+		response_header response(404);
+		response.add_line("Content-Length: 248");
+		response.add_server_info();
+		response.add_line("Content-Type: text/html; charset=utf-8");
+		response.add_connection_type(false);
+		response.add_blank_line();
+		connections[fd].write(response.data());
 		connections[fd].write(not_found_html);
 	}
 	catch (const std::domain_error& a) {
