@@ -10,14 +10,14 @@ namespace mfcslib {
 		http2
 	};
 
-	constexpr auto hd_host = "host";
-	constexpr auto hd_connection = "connection";
-	constexpr auto hd_method = "method";
-	constexpr auto hd_edition = "edition";
-	constexpr auto hd_path = "path";
-	constexpr auto hd_range = "range";
-	constexpr auto hd_content_length = "content_length";
-	constexpr auto hd_post_content = "post_content";
+	#define hd_host "host"
+	#define hd_connection "connection"
+	#define hd_method "method"
+	#define hd_edition "edition"
+	#define hd_path "path"
+	#define hd_range "range"
+	#define hd_content_length "content_length"
+	#define hd_post_content "post_content"
 
 	class response_header
 	{

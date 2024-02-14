@@ -50,8 +50,7 @@ enum MyEnum
 {
 	FILE_TYPE,
 	MESSAGE_TYPE,
-	HTTP_GET_TYPE,
-	HTTP_POST_TPYE,
+	HTTP_TYPE,
 	GET_TYPE
 };
 
@@ -95,12 +94,12 @@ private:
 	static inline int pipe_fd[2];
 
 	int decide_action(int fd);
-	co_handle deal_with_file(int fd);
-	void deal_with_mesg(int fd);
-	co_handle deal_with_get_file(int fd);
+	co_handle handle_sft_file(int fd);
+	void handle_sft_mesg(int fd);
+	co_handle handle_sft_get_file(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
-	co_handle deal_with_http(int fd);
+	co_handle handle_http(int fd);
 };
 
 void receive_loop::stop_loop(int sig)
@@ -148,7 +147,7 @@ void receive_loop::loop()
 	running = true;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
-	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
+	epoll_instance.add_fd_or_event(socket_fd, false, false, 0);
 	epoll_instance.add_fd_or_event(pipe_fd[0], false, false, 0);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME.count());
@@ -167,16 +166,14 @@ void receive_loop::loop()
 
 			if (react_fd == socket_fd) {
 				try {
-					while (true) {
-						auto res = localserver.accpet();
-						if (!res.available()) break;
-						LOG_ACCEPT(res.get_ip_port_s());
-						auto accepted_fd = res.get_fd();
-						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
-						epoll_instance.set_fd_no_block(accepted_fd);
-						connections[accepted_fd] = std::move(res);
-						clock.insert_or_update(accepted_fd);
-					}
+					auto res = localserver.accpet();
+					if (!res.available()) break;
+					LOG_ACCEPT(res.get_ip_port_s());
+					auto accepted_fd = res.get_fd();
+					epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
+					epoll_instance.set_fd_no_block(accepted_fd);
+					connections[accepted_fd] = std::move(res);
+					clock.insert_or_update(accepted_fd);
 				}
 				catch (const std::exception& e) {
 					LOG_ERROR("Accept failed: ", e.what());
@@ -206,21 +203,19 @@ void receive_loop::loop()
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
 				if (task.empty() || task.done()) {
-					int type = decide_action(react_fd);
-					switch (type)
+					switch (decide_action(react_fd))
 					{
 					case FILE_TYPE:
-						task = deal_with_file(react_fd);
+						task = handle_sft_file(react_fd);
 						break;
 					case MESSAGE_TYPE:
-						deal_with_mesg(react_fd);
+						handle_sft_mesg(react_fd);
 						break;
 					case GET_TYPE:
-						task = deal_with_get_file(react_fd);
+						task = handle_sft_get_file(react_fd);
 						break;
-					case HTTP_GET_TYPE: [[fallthrough]];
-					case HTTP_POST_TPYE:
-						task = deal_with_http(react_fd);
+					case HTTP_TYPE:
+						task = handle_http(react_fd);
 						break;
 					default:
 						LOG_INFO(
@@ -273,13 +268,13 @@ int receive_loop::decide_action(int fd)
 	case 'f':return FILE_TYPE;
 	case 'g':return GET_TYPE;
 	case 'm':return MESSAGE_TYPE;
-	case 'G':return HTTP_GET_TYPE;
-	case 'P':return HTTP_POST_TPYE;
+	case 'G': [[fallthrough]];
+	case 'P':return HTTP_TYPE;
 	}
 	return -1;
 }
 
-co_handle receive_loop::deal_with_file(int fd)
+co_handle receive_loop::handle_sft_file(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
@@ -352,7 +347,7 @@ co_handle receive_loop::deal_with_file(int fd)
 			LOG_ERROR("Not received complete file data.");
 		}
 	}
-	catch (const std::exception& e) {
+	catch (const mfcslib::basic_exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
 		LOG_ERROR("Not received complete file data.");
 		LOG_CLOSE(connections[fd].get_ip_port_s());
@@ -361,7 +356,7 @@ co_handle receive_loop::deal_with_file(int fd)
 	co_return;
 }
 
-void receive_loop::deal_with_mesg(int fd)
+void receive_loop::handle_sft_mesg(int fd)
 {
 	char code = '1';
 	write(fd, &code, sizeof code);
@@ -369,7 +364,7 @@ void receive_loop::deal_with_mesg(int fd)
 	connections[fd].requests.clear();
 }
 
-co_handle receive_loop::deal_with_get_file(int fd)
+co_handle receive_loop::handle_sft_get_file(int fd)
 {
 	string& request = connections[fd].requests;
 	LOG_INFO("Receive file request from:",
@@ -391,7 +386,7 @@ co_handle receive_loop::deal_with_get_file(int fd)
 			else co_yield 1;
 		}
 		if (flag != '1' || ret <= 0)
-			throw std::domain_error("Receive flag failed.");
+			throw peer_exception("Receive flag failed.");
 		off_t off = 0;
 		uintmax_t send_size = requested_file.size();
 		int file_fd = requested_file.get_fd();
@@ -431,12 +426,12 @@ co_handle receive_loop::deal_with_get_file(int fd)
 	#endif // DEBUG
 		LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
 	}
-	catch (const std::domain_error& e) {
+	catch (const mfcslib::peer_exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
 		LOG_CLOSE(connections[fd].get_ip_port_s());
 		close_connection(fd);
 	}
-	catch (const std::runtime_error& e) {
+	catch (const mfcslib::file_exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
 		char code = '0';
 		write(fd, &code, sizeof code);
@@ -456,7 +451,7 @@ void receive_loop::alarm_handler(int sig)
 	errno = save_errno;
 }
 
-co_handle receive_loop::deal_with_http(int fd)
+co_handle receive_loop::handle_http(int fd)
 {
 	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
 	try {
@@ -497,7 +492,7 @@ co_handle receive_loop::deal_with_http(int fd)
 					if (errno != EAGAIN) {
 						string err = "Error in sendfile: ";
 						err += GETERR;
-						throw std::domain_error(err);
+						throw peer_exception(err);
 					}
 					co_yield 1;
 				}
@@ -511,7 +506,11 @@ co_handle receive_loop::deal_with_http(int fd)
 			co_yield 1;
 		}
 	}
-	catch (const std::runtime_error& e) {
+	catch (const peer_exception& a) {
+		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", a.what());
+		close_connection(fd);
+	}
+	catch (const IO_exception& e) {
 		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", e.what());
 		response_header response(404);
 		response.add_line("Content-Length: 248");
@@ -521,10 +520,6 @@ co_handle receive_loop::deal_with_http(int fd)
 		response.add_blank_line();
 		connections[fd].write(response.data());
 		connections[fd].write(not_found_html);
-	}
-	catch (const std::domain_error& a) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", a.what());
-		close_connection(fd);
 	}
 	co_return;
 }

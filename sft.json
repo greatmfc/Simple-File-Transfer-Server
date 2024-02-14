@@ -1,5 +1,8 @@
 {
-	"FileReceived" : "./FileReceived/" ,
-	"FileToSend" : "./FileToSend/" ,
-	"LogPath" : "./Logs/"
+	"FileReceived": "./FileReceived",
+	"FileToSend": "./FileToSend",
+	"LogPath": "./Logs",
+	"HttpPath":"./http",
+	"DefaultPage": "index.html",
+	"ListenPort":9007
 }

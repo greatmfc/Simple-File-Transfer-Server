@@ -5,6 +5,6 @@
 #include "json.hpp"
 #include "util.hpp"
 
-#define LIB_VER "1.4.1.1"
+#define LIB_VER "1.5.1.1"
 #define LAST_MOD 20240128L
 #endif // !ALIB_H

@@ -9,8 +9,7 @@
 #include <iostream>
 #include <vector>
 #include <ranges>
-using std::out_of_range;
-using std::runtime_error;
+#include "exception.hpp"
 namespace sc = std::chrono;
 using namespace std::chrono_literals;
 namespace mfcslib {
@@ -39,14 +38,14 @@ namespace mfcslib {
 			arg._SIZE = 0;
 		}
 		constexpr _Type& operator[](int arg) {
-			if (arg < 0 || arg >= _SIZE) throw std::out_of_range("In [].");
+			if (arg < 0 || arg >= _SIZE) throw out_of_range_exception("In [].");
 			return _DATA[arg];
 		}
 		constexpr bool empty() {
 			return _DATA == nullptr;
 		}
 		constexpr void fill(_Type val, size_t start, size_t end) {
-			if (start >= end) throw std::out_of_range("In fill, start is greater or equal to end.");
+			if (start >= end) throw out_of_range_exception("In fill, start is greater or equal to end.");
 			memset(_DATA + start, val, end - start);
 		}
 		constexpr void empty_array() {
@@ -57,26 +56,26 @@ namespace mfcslib {
 		}
 		constexpr auto read(int fd) {
 			auto ret = ::read(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		constexpr auto read(int fd, size_t pos, size_t sz) {
 			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE)
-				throw out_of_range("In read, pos or sz is out of range.");
+				throw out_of_range_exception("In read, pos or sz is out of range.");
 			auto ret = ::read(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		constexpr auto write(int fd) {
 			auto ret = ::write(fd, _DATA, _SIZE);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		constexpr auto write(int fd, ssize_t pos, size_t sz) {
 			if (pos >= _SIZE || sz > _SIZE || pos + sz > _SIZE)
-				throw out_of_range("In write, pos or sz is out of range.");
+				throw out_of_range_exception("In write, pos or sz is out of range.");
 			auto ret = ::write(fd, _DATA + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		constexpr void destroy() {
@@ -165,10 +164,10 @@ namespace mfcslib {
 		void setup_interval(const sc::seconds& time) {
 			_interval = time;
 		}
-		void insert_or_update(const T& value) {
+		void insert_or_update(T value) {
 			_data[value] = sc::system_clock::now();
 		}
-		void erase_value(const T& value) {
+		void erase_value(T value) {
 			_data.erase(value);
 		}
 		std::vector<T> clear_expired() {

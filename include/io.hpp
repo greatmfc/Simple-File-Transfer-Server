@@ -23,21 +23,18 @@ namespace mfcslib {
 	protected:
 		basic_io() = default;
 		~basic_io() {
-			if (_fd > 0) {
-				::close(_fd);
-				_fd = -1;
-			}
+			::close(_fd);
 		}
 	public:
 		auto read() {
 			Byte charc = 0;
 			auto ret = ::read(_fd, &charc, 1);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return charc;
 		}
 		auto read(TypeArray<Byte>& buf) {
 			auto ret = ::read(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		auto read(TypeArray<Byte>& buf, size_t pos, size_t sz) {
@@ -45,12 +42,12 @@ namespace mfcslib {
 			if (pos >= len || sz > len || pos + sz > len)
 				throw out_of_range("In read, pos or sz is out of range.");
 			auto ret = ::read(_fd, buf.get_ptr() + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		auto write(TypeArray<Byte>& buf) {
 			auto ret = ::write(_fd, buf.get_ptr(), buf.length());
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		auto write(TypeArray<Byte>& buf, size_t pos, size_t sz) {
@@ -58,12 +55,12 @@ namespace mfcslib {
 			if (pos >= len || sz > len || pos + sz > len)
 				throw out_of_range("In write, pos or sz is out of range.");
 			auto ret = ::write(_fd, buf.get_ptr() + pos, sz);
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		auto write(const string& buf) {
 			auto ret = ::write(_fd, buf.c_str(), buf.length());
-			if (ret < 0 && errno != EAGAIN) throw runtime_error(strerror(errno));
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
 		void close() {
@@ -105,7 +102,7 @@ namespace mfcslib {
 			if (trunc) flag |= O_TRUNC;
 			else flag |= O_APPEND;
 			_fd = ::open(file.c_str(), flag, 0644);
-			if (_fd < 0) throw runtime_error(strerror(errno));
+			if (_fd < 0) throw file_exception(strerror(errno));
 			_path = file;
 			return _fd;
 		}
@@ -175,7 +172,7 @@ namespace mfcslib {
 			if (ret < 0) {
 				string error_msg = "Can not connect: ";
 				error_msg += strerror(errno);
-				throw std::runtime_error(error_msg);
+				throw socket_exception(error_msg);
 			}
 		}
 		in_addr get_ip() {
@@ -193,9 +190,7 @@ namespace mfcslib {
 		std::string get_ip_port_s() {
 			return get_ip_s() + ':' + get_port_s();
 		}
-		~NetworkSocket() {
-			this->close();
-		}
+		~NetworkSocket() {}
 
 		mfcslib::NetworkSocket& operator=(mfcslib::NetworkSocket&& other) {
 			this->_fd = other._fd;
@@ -227,17 +222,17 @@ namespace mfcslib {
 			ip_port.sin_port = htons(port);
 			_fd = socket(PF_INET, SOCK_STREAM, IPPROTO_IP);
 			if (_fd <= 0) {
-				throw runtime_error(strerror(errno));
+				throw socket_exception(strerror(errno));
 			}
 			int flag = 1;
 			setsockopt(_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 			int ret = ::bind(_fd, (sockaddr*)&ip_port, sizeof(ip_port));
 			if (ret < 0) {
-				throw runtime_error(strerror(errno));
+				throw socket_exception(strerror(errno));
 			}
 			auto rett = ::listen(_fd, 5);
 			if (rett < 0) {
-				throw runtime_error(strerror(errno));
+				throw socket_exception(strerror(errno));
 			}
 		}
 		NetworkSocket accpet() {
@@ -245,7 +240,7 @@ namespace mfcslib {
 			socklen_t len = sizeof addrs;
 			auto ret = ::accept(_fd, (sockaddr*)&addrs, &len);
 			if (ret < 0) {
-				if (errno != EAGAIN) throw runtime_error(strerror(errno));
+				if (errno != EAGAIN) throw socket_exception(strerror(errno));
 				else return {};
 			}
 			return NetworkSocket(ret, addrs);
