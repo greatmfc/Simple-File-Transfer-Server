@@ -32,6 +32,11 @@ namespace mfcslib {
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return charc;
 		}
+		auto read(Byte* buf,size_t nbytes) {
+			auto ret = ::read(_fd, buf, nbytes);
+			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
+			return ret;
+		}
 		auto read(TypeArray<Byte>& buf) {
 			auto ret = ::read(_fd, buf.get_ptr(), buf.length());
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
@@ -58,8 +63,8 @@ namespace mfcslib {
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
-		auto write(const string& buf) {
-			auto ret = ::write(_fd, buf.c_str(), buf.length());
+		auto write(const std::string_view& buf) {
+			auto ret = ::write(_fd, buf.data(), buf.length());
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
@@ -69,10 +74,10 @@ namespace mfcslib {
 				_fd = -1;
 			}
 		}
-		auto get_fd() {
+		auto get_fd() const {
 			return _fd;
 		}
-		auto available() {
+		auto available() const {
 			return _fd != -1;
 		}
 		auto set_nonblocking() {
@@ -115,13 +120,13 @@ namespace mfcslib {
 			other._fd = -1;
 		}
 		~File() {}
-		bool is_existing() {
+		bool is_existing() const {
 			return _fd > 0;
 		}
-		auto size() {
+		auto size() const {
 			return file_size(_path);
 		}
-		string size_string() {
+		string size_string() const {
 			return std::to_string(file_size(_path));
 		}
 		string get_parent() {

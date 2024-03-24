@@ -78,6 +78,7 @@ public:
 			char log_name[64] = { 0 };
 			strftime(log_name, 64, (path + "log_%F").c_str(), currentTime);
 			log_file.open(log_name, false, mfcslib::WRONLY);
+			log_file.set_nonblocking();
 		}
 	}
 	static inline log* get_instance() {

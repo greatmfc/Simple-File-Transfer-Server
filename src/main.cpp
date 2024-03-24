@@ -5,7 +5,11 @@
 #include <cstdio>
 #include <sys/stat.h>
 #include <vector>
-#include "all_module.h"
+#include "../include/all_libs.h"
+#include "epoll_utility.hpp"
+#include "logger.hpp"
+#include "client.hpp"
+#include "server.hpp"
 using std::cout;
 using std::endl;
 using std::vector;
@@ -39,9 +43,9 @@ void usage() {
 }
 
 void version() {
-	cout << "Simple-File-Transfer by greatmfc\n" << "Version: " << VERSION << endl;
-	cout << "Last modified date: " << LAST_MODIFIED << endl;
-	cout << "Built date: " << __DATE__ << ' ' << __TIME__ << endl;
+	cout << "\033[1mSimple-File-Transfer by greatmfc\033[0m\n" << "\033[1mVersion: \033[0m" << SFT_VER << endl;
+	cout << "\033[1mLast modified date: \033[0m" << SRC_LAST_MODIFIED << endl;
+	cout << "\033[1mBuilt date: \033[0m" << __DATE__ << ' ' << __TIME__ << endl;
 }
 
 void check_file(char* path) {
@@ -88,6 +92,7 @@ static void register_signal(const vector<int>& sigs) {
 	for (auto& sig : sigs) {
 		signal(sig, sig_hanl);
 	}
+	signal(SIGPIPE, SIG_IGN);
 }
 
 int main(int argc, char* argv[])
@@ -98,7 +103,7 @@ int main(int argc, char* argv[])
 	char* path = nullptr;
 	char* file_to_get = nullptr;
 	char mode[] = "cm:f:g:hvn";
-	static vector<int> sig_to_register = { SIGINT,SIGSEGV,SIGTERM,SIGPIPE };
+	static vector<int> sig_to_register = { SIGINT,SIGSEGV,SIGTERM };
 	while ((opt = getopt(argc, argv, mode)) != EOF) {
 		switch (opt)
 		{

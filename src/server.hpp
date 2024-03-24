@@ -13,6 +13,7 @@
 #include <iostream>
 #include <string_view>
 #include <unordered_map>
+#include <format>
 #include "../include/coroutine.hpp"
 #include "../include/io.hpp"
 #include "epoll_utility.hpp"
@@ -68,6 +69,8 @@ struct data_info :public mfcslib::NetworkSocket
 	}
 	string requests;
 	co_handle task;
+	bool is_write_awaiting = false;
+	bool is_read_awaiting = false;
 };
 
 class receive_loop
@@ -147,7 +150,7 @@ void receive_loop::loop()
 	running = true;
 	int socket_fd = localserver.get_fd();
 	localserver.set_nonblocking();
-	epoll_instance.add_fd_or_event(socket_fd, false, false, 0);
+	epoll_instance.add_fd_or_event(socket_fd, false, true, 0);
 	epoll_instance.add_fd_or_event(pipe_fd[0], false, false, 0);
 	signal(SIGALRM, alarm_handler);
 	alarm(ALARM_TIME.count());
@@ -166,16 +169,17 @@ void receive_loop::loop()
 
 			if (react_fd == socket_fd) {
 				try {
-					auto res = localserver.accpet();
-					if (!res.available()) break;
-					LOG_ACCEPT(res.get_ip_port_s());
-					auto accepted_fd = res.get_fd();
-					epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
-					epoll_instance.set_fd_no_block(accepted_fd);
-					connections[accepted_fd] = std::move(res);
-					clock.insert_or_update(accepted_fd);
-				}
-				catch (const std::exception& e) {
+					while (1) {
+						auto res = localserver.accpet();
+						if (!res.available()) break;
+						LOG_ACCEPT(res.get_ip_port_s());
+						auto accepted_fd = res.get_fd();
+						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
+						epoll_instance.set_fd_no_block(accepted_fd);
+						connections[accepted_fd] = std::move(res);
+						clock.insert_or_update(accepted_fd);
+					}
+				} catch (const mfcslib::basic_exception& e) {
 					LOG_ERROR("Accept failed: ", e.what());
 				}
 			}
@@ -202,7 +206,10 @@ void receive_loop::loop()
 				auto& di = connections[react_fd];
 				co_handle& task = di.task;
 				clock.insert_or_update(react_fd);
-				if (task.empty() || task.done()) {
+				if (di.is_read_awaiting) {
+					task.resume();
+				}
+				else {
 					switch (decide_action(react_fd))
 					{
 					case FILE_TYPE:
@@ -229,12 +236,11 @@ void receive_loop::loop()
 						break;
 					}
 				}
-				else task.resume();
 			}
 			else if (epoll_instance.events[i].events & EPOLLOUT) {
 				co_handle& task = connections[react_fd].task;
 				clock.insert_or_update(react_fd);
-				if (!(task.empty() || task.done())) {
+				if (connections[react_fd].is_write_awaiting) {
 					task.resume();
 				}
 			}
@@ -453,16 +459,25 @@ void receive_loop::alarm_handler(int sig)
 
 co_handle receive_loop::handle_http(int fd)
 {
-	static char not_found_html[] = "<!DOCTYPE html>\n<html lang=\"en\">\n\n<head>\n\t<meta charset=\"UTF - 8\">\n\t<title>404</title>\n</head>\n\n<body>\n\t<div class=\"text\" style=\"text-align: center\">\n\t\t<h1> 404 Not Found </h1>\n\t\t<h1> Target file is not found on sft. </h1>\n\t</div>\n</body>\n\n</html>\n";
-	try {
-		while (true) {
+	data_info& current_mission = connections[fd];
+	while (true) {
+		response_header response;
+		try {
 			string target_http = json_conf[f_HttpPath];
-			auto& request = connections[fd].requests;
-			for (;;) {
-				char buffer[1024]{ 0 };
-				auto ret = read(fd, buffer, 1023);
-				if (ret <= 0) break;
-				request += buffer;
+			auto& request = current_mission.requests;
+			if (request.empty()) {
+				for (;;) {
+					char buffer[1024]{ 0 };
+					auto ret = current_mission.read(buffer, sizeof buffer - 1);
+					if (ret == 0) {
+						close_connection(fd);
+						co_return;
+					}
+					else if (ret == -1) {
+						break;
+					}
+					request += buffer;
+				}
 			}
 			auto parse_result = parse_http_request(request);
 			request.clear();
@@ -474,54 +489,112 @@ co_handle receive_loop::handle_http(int fd)
 			}
 			else
 				target_http += json_conf[f_DefaultPage];
-			LOG_INFO("Client ", connections[fd].get_ip_port_s(), " requests HTTP for: ", target_http);
-			File send_page(target_http, false, RDONLY);
-			response_header response(200);
-			response.add_content_length(send_page);
-			response.add_server_info();
-			response.add_content_type(send_page.get_type());
-			response.add_connection_type(false);
-			response.add_blank_line();
-			connections[fd].write(response.data());
+			LOG_INFO("Client ", current_mission.get_ip_port_s(), " requests HTTP for: ", target_http);
 			loff_t off = 0;
-			auto sz = send_page.size();
+			File send_page(target_http, false, RDONLY);
+			auto file_size = send_page.size();
+			auto sz = send_page.size() - off;
+			if (auto ite = parse_result.find(hd_range); ite != parse_result.end()) {
+				auto& raw_content = ite->second;
+				auto start_idx = raw_content.find_first_of('=') + 1;
+				auto split_idx = raw_content.find('-');
+				auto start_bytes = std::stol(raw_content.substr(start_idx, split_idx - start_idx));
+				auto end_bytes = file_size - 1;
+				if (split_idx != raw_content.size() - 1) {
+					end_bytes = std::stol(raw_content.substr(split_idx + 1, raw_content.size() - split_idx - 1));
+				}
+				off = start_bytes;
+				sz = end_bytes - start_bytes + 1;
+				response.add_status_code(206);
+				response.add_server_info();
+				response.add_date();
+				response.add_Etag(send_page);
+				response.add_last_modified(send_page);
+				response.add_content_type(send_page.get_type());
+				response.add_connection_type(false);
+				response.add_content_range(start_bytes, end_bytes, file_size);
+				LOG_INFO(std::format("Require {} for range from {} to {}.\n", send_page.filename(), start_bytes, end_bytes));
+				response.add_content_length(sz);
+				response.add_blank_line();
+			}
+			else {
+				auto cetag = response.generate_Etag(send_page);
+				auto n_ite = parse_result.find(hd_if_none_match);
+				if (n_ite != parse_result.end() && n_ite->second == cetag) {
+					response.add_status_code(304);
+					response.add_date();
+					response.add_Etag(cetag);
+					response.add_last_modified(send_page);
+					response.add_server_info();
+					response.add_connection_type(false);
+					response.add_blank_line();
+					current_mission.write(response.data());
+					goto next_round;
+				}
+				else {
+					response.add_status_code(200);
+					response.add_date();
+					response.add_Etag(cetag);
+					response.add_line("Accept-Ranges: bytes");
+					response.add_last_modified(send_page);
+					response.add_content_length(file_size);
+					response.add_server_info();
+					response.add_content_type(send_page.get_type());
+					response.add_connection_type(false);
+					response.add_blank_line();
+				}
+			}
+			current_mission.write(response.data());
 			ssize_t ret = 0;
 			do {
-				ret = sendfile64(connections[fd].get_fd(), send_page.get_fd(), &off, sz);
+				ret = sendfile64(current_mission.get_fd(), send_page.get_fd(), &off, sz);
 				if (ret == -1) {
 					if (errno != EAGAIN) {
 						string err = "Error in sendfile: ";
 						err += GETERR;
-						throw peer_exception(err);
+						LOG_ERROR("Client:", current_mission.get_ip_port_s(), " has error: ", err);
+						close_connection(fd);
 					}
+					current_mission.is_write_awaiting = true;
 					co_yield 1;
 				}
-			} while (off != (loff_t)sz);
+			} while (off != (loff_t)file_size);
 			LOG_INFO("Finish sending: " + send_page.filename());
 			if (parse_result[hd_connection] == "close") {
 				close_connection(fd);
-				LOG_CLOSE(connections[fd].get_ip_port_s());
+				LOG_CLOSE(current_mission.get_ip_port_s());
 				co_return;
 			}
-			co_yield 1;
 		}
+		catch (const IO_exception& e) {
+			LOG_ERROR("Client:", current_mission.get_ip_port_s(), " has error: ", e.what());
+			response.add_status_code(404);
+			response.add_line("Content-Length: 296");
+			//response.add_content_length(sizeof not_found_html - 1);
+			response.add_server_info();
+			response.add_line("Content-Type: text/html; charset=utf-8");
+			response.add_connection_type(false);
+			response.add_blank_line();
+			current_mission.write(response.data());
+			current_mission.write(not_found_html);
+		}
+		catch (const std::exception& a) {
+			LOG_ERROR("Client:", current_mission.get_ip_port_s(), " has error: ", a.what());
+			response.add_status_code(403);
+			response.add_line("Content-Length: 299");
+			//response.add_content_length(sizeof forbidden_html - 1);
+			response.add_server_info();
+			response.add_line("Content-Type: text/html; charset=utf-8");
+			response.add_connection_type(false);
+			response.add_blank_line();
+			current_mission.write(response.data());
+			current_mission.write(forbidden_html);
+		}
+	next_round:
+		current_mission.is_write_awaiting = false;
+		current_mission.is_read_awaiting = true;
+		co_yield 1;
 	}
-	catch (const peer_exception& a) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", a.what());
-		close_connection(fd);
-	}
-	catch (const IO_exception& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(), " has error: ", e.what());
-		response_header response(404);
-		response.add_line("Content-Length: 248");
-		response.add_server_info();
-		response.add_line("Content-Type: text/html; charset=utf-8");
-		response.add_connection_type(false);
-		response.add_blank_line();
-		connections[fd].write(response.data());
-		connections[fd].write(not_found_html);
-	}
-	co_return;
 }
 #endif // !S_HPP
 

@@ -1,76 +1,48 @@
-# Simple-File-Transfer
 
-Use it to transfer your files between two different linux host.
+# Simple File Transfer
 
-## HOWTOWORK
-Run this program in server mode on host A, then run the same program in client mode on host B to interact with server.
+**Easily transfer files between two Linux hosts.**
 
-For example, I would like to transfer a file called ***winter.mp4*** from host A whose ip is ***192.168.100.5*** to host B. I can do this by firstly typing command `./sft.out` to run this program in server mode on A then type command `./sft.out -g winter.mp4 192.168.100.5:9007` to run this program in client mode on B to download the file into current directory.
+## How It Works
+- **Server Mode**: Run the program on Host A.
+- **Client Mode**: Execute the program on Host B to interact with the server.
 
-If you wish to send a file such as ***winter.mp3*** from B to A, you can do this by typing command `./sft.out -f ./winter.mp3 192.168.100.5:9007` on B (Make sure you already run the program in server mode on A). The program will display detailed information about whether its operation is succeed or not.
+**Example**: To transfer `winter.mp4` from Host A (`192.168.100.5`) to Host B, initiate the server on A with `./sft.out`. Then, on B, use `./sft.out -g winter.mp4 192.168.100.5:9007` to download the file.
 
-You can also send a message from B to A by typing `./sft.out -m hello,winter! 192.168.100.5:9007`.
+To send `winter.mp3` from B to A, ensure A is in server mode, then on B, execute `./sft.out -f ./winter.mp3 192.168.100.5:9007`.
 
-This program supports json configuration. You can custom the locations to store log files, to store files which can be sent and the files that have been received to be stored at. If locations are not specified, the default location is program's working directory.
+Send messages with `./sft.out -m "hello,winter!" 192.168.100.5:9007`.
 
-The supported key fields and examples are presented below:
+**Configuration**: Utilizes JSON for custom settings including log, send, and receive file directories. Defaults to the working directory if unspecified.
+
+**Example Configuration**:
 ```json
 {
-	"FileReceived" : "./FileReceived/" ,
-	"FileToSend" : "./FileToSend/" ,
-	"LogPath" : "./Logs/"
+    "FileReceived": "./FileReceived",
+    "FileToSend": "./FileToSend",
+    "LogPath": "./Logs",
+	"HttpPath":"./http",
+	"DefaultPage": "index.html",
+	"ListenPort": 9007
 }
 ```
-or
-```json
-{
-	"FileReceived" : null ,
-	"FileToSend" : null ,
-	"LogPath" : "./SOMEWHEREELSE/"
-}
+Directories are created if they do not exist.
+
+## Building the Program
+Clone and build with the following commands:
+```bash
+git clone https://github.com/greatmfc/simple-file-transfer
+cd simple-file-transfer/
+make # or 'make testing' for debug mode
 ```
-Note that the specified directories will be created if it is not exist.
+Generates `sft.out` or `test.out` executable.
 
+## Usage
+Run `./sft.out -h` for help. Supports server and client modes with options for file transfer, fetching, and messaging.
 
-## HOWTOBUILD
-
-Type the commands below in your terminal:
-
-`git clone https://github.com/greatmfc/simple-file-transfer`
-
-`cd simple-file-transfer/`
-
- `make`  or  `make testing`  for debug
-
-  The executable file which Makefile generates is named as ***sft.out*** or ***test.out***.
-
-## HOWTOUSE
-
-Type `./sft.out -h` for help.
-
-```c
-usage:
-	"Server mode:\n"
-	"    ./sft.out [option]\n"
-	"Client mode:\n"
-	"    ./sft.out [option] [argument] ip:port\n"
-	"Options: \n"
-	"    General:\n"
-	"        -h             This information.\n"
-	"        -v             Display version.\n"
-	"    In server mode:\n"
-	"        -n             No log file will be created.\n"
-	"    In client mode:\n"
-	"        -f             File mode for sending file. Argument is your file's path.\n"
-	"        -g             Fetch file from server. Argument is the file name on server.\n"
-	"        -m             Message mode for sending messages. Argument is your content.\n"
-	"Arguments: \n"
-	"        -f             [file_path]\n"
-	"        -g             [file_name]\n"
-	"        -m             [contents]\n"
-	"Examples:\n"
-	"    ./sft.out -f ./file 255.255.255.0:8888\n"
-	"    ./sft.out -g file_name 255.255.255.0:8888\n"
-	"    ./sft.out -m hello,world! 255.255.255.0:8888\n"
+**Examples**:
+```bash
+./sft.out -f ./file 255.255.255.0:8888
+./sft.out -g file_name 255.255.255.0:8888
+./sft.out -m "hello,world!" 255.255.255.0:8888
 ```
-

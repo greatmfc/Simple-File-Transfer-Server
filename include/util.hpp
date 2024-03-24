@@ -221,33 +221,6 @@ namespace mfcslib {
 		return char((_single_hex_to_char(str[0]) << 4) + _single_hex_to_char(str[1]));
 	}
 
-	constexpr std::string decode_url(const std::string& str) {
-		auto lpt = str.data();
-		auto length = str.length();
-		auto ridx = str.find('%');
-		if (ridx == std::string::npos) return str;
-		std::string ret_str(lpt, ridx);
-		while (ridx < length) {
-			lpt += ridx + 1;
-			ret_str.push_back(hex_str_to_char(lpt));
-			if (*(lpt + 2) == '%') {
-				ridx = 2;
-				continue;
-			}
-			else if (*(lpt + 2) == 0) break;
-			lpt += 2;
-			ridx = strchr_c(lpt, '%');
-			if (ridx == UINT64_MAX) {
-				ret_str.append(lpt, str.data() + length);
-				break;
-			}
-			else {
-				ret_str.append(lpt, lpt + ridx);
-			}
-		}
-		return ret_str;
-	}
-
 }
 #define _var const auto&s
 #define _in :

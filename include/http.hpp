@@ -2,6 +2,7 @@
 #define HTTP_HPP
 #include "util.hpp"
 #include "io.hpp"
+#include "special_response.h"
 namespace mfcslib {
 	enum http_type
 	{
@@ -11,38 +12,33 @@ namespace mfcslib {
 	};
 
 	#define hd_host "host"
-	#define hd_connection "connection"
 	#define hd_method "method"
 	#define hd_edition "edition"
 	#define hd_path "path"
-	#define hd_range "range"
-	#define hd_content_length "content_length"
 	#define hd_post_content "post_content"
+	#define hd_range "Range"
+	#define hd_connection "Connection"
+	#define hd_content_length "Content-Length"
+    #define hd_if_modified_since "If-Modified-Since"
+    #define hd_if_none_match "If-None-Match"
 
 	class response_header
 	{
 	public:
-		response_header(int status_code) {
+		response_header() {
 			_response = "HTTP/1.1 ";
-			switch (status_code) {
-			case 200:
-				_response += "200 OK\r\n";
+		}
+		response_header(int edition) {
+			switch (edition) {
+			case http10:
+				_response = "HTTP/1.0 ";
 				break;
-			case 404:
-				_response += "404 Not Found\r\n";
+			case http2:
+				_response = "HTTP/2 ";
 				break;
-			case 206:
-				_response += "206 Partial Content\r\n";
-				break;
-			case 403:
-				_response += "403 Forbidden\r\n";
-				break;
-			case 500:
-				_response += "500 Internal Server Error\r\n";
-				break;
+			case http11:
 			default:
-				_response += std::to_string(status_code) + "\r\n";
-				//throw std::invalid_argument(std::format("Unsupported status code:{}.", status_code));
+				_response = "HTTP/1.1 ";
 				break;
 			}
 		}
@@ -84,7 +80,6 @@ namespace mfcslib {
 		}
 		~response_header() = default;
 
-		[[deprecated]]
 		void add_status_code(int status_code) {
 			switch (status_code) {
 			case 200:
@@ -92,6 +87,9 @@ namespace mfcslib {
 				break;
 			case 404:
 				_response += "404 Not Found\r\n";
+				break;
+			case 304:
+				_response += "304 Not Modified\r\n";
 				break;
 			case 206:
 				_response += "206 Partial Content\r\n";
@@ -159,21 +157,73 @@ namespace mfcslib {
 				_response += ite->second + "\r\n";
 			}
 			else {
-				_response += content_type[".*"] + "\r\n";
+				_response += "Content-Type: application/octet-stream;\r\n";
 			}
 		}
 
+		void add_date() {
+			char buf[32]{};
+			time_t tt = time(nullptr);
+			struct tm* mt = localtime(&tt);
+			strftime(buf, sizeof buf, "%a, %d %b %Y %T %Z", mt);
+			_response += "Date: ";
+			_response += buf;
+			_response += "\r\n";
+		}
+
+		void add_last_modified(const File& file) {
+			struct stat st;
+			fstat(file.get_fd(), &st);
+			char buf[32]{};
+			strftime(buf, sizeof buf, "%a, %d %b %Y %T %Z", gmtime(&st.st_mtim.tv_sec));
+			_response += "Last-Modified: ";
+			_response += buf;
+			_response += "\r\n";
+		}
+
+		void add_Etag(const File& file) {
+			/*
+			std::stringstream stream;
+			stream << std::hex << st.st_mtim.tv_sec;
+			_response += "ETag: \"";
+			_response += stream.str() + '-';
+			stream.str("");
+			stream << std::hex << file.size();
+			*/
+			_response += "ETag: " + generate_Etag(file) + "\r\n";
+		}
+
+		void add_Etag(const string& str) {
+			/*
+			std::stringstream stream;
+			stream << std::hex << st.st_mtim.tv_sec;
+			_response += "ETag: \"";
+			_response += stream.str() + '-';
+			stream.str("");
+			stream << std::hex << file.size();
+			*/
+			_response += "ETag: " + str + "\r\n";
+		}
+
+		string generate_Etag(const File& file) {
+			struct stat st;
+			fstat(file.get_fd(), &st);
+			return std::format("\"{:x}-{:x}\"", st.st_mtim.tv_sec, file.size());
+		}
 	private:
 		std::string _response;
 		std::unordered_map<string, string> content_type = {
-	{".html","Content-Type: text/html; charset=utf-8"},
-	{".txt","Content-Type: text/plain; charset=utf-8"},
-	{".jpg","Content-Type: image/jpeg;"},
-	{".png","Content-Type: image/png;"},
-	{".mp4","Content-Type: video/mpeg4;"},
-	{".mkv","Content-Type: video/mkv;"},
-	{".pdf","Content-Type: application/pdf;"},
-	{".zip","Content-Type: application/zip;"},
+	{".html","Content-Type: text/html"},
+	{".txt","Content-Type: text/plain"},
+	{".jpg","Content-Type: image/jpeg"},
+	{".png","Content-Type: image/png"},
+	{".mp4","Content-Type: video/mp4"},
+	{".mkv","Content-Type: video/mkv"},
+	{".pdf","Content-Type: application/pdf"},
+	{".zip","Content-Type: application/zip"},
+	{".css","Content-Type: text/css"},
+	{".js","Content-Type: application/javascript"},
+    {".ico","Content-Type: image/x-icon"},
 	{".*","Content-Type: application/octet-stream;"}
 		};
 	};
@@ -223,5 +273,29 @@ namespace mfcslib {
 	}
 }
 
-//rewrite exceptions for File
+constexpr std::string decode_url(const std::string& str) {
+	auto lpt = str.data();
+	auto length = str.length();
+	auto ridx = str.find('%');
+	if (ridx == std::string::npos) return str;
+	std::string ret_str(lpt, ridx);
+	while (ridx < length) {
+		lpt += ridx + 1;
+		ret_str.push_back(hex_str_to_char(lpt));
+		if (*(lpt + 2) == '%') {
+			ridx = 2;
+			continue;
+		} else if (*(lpt + 2) == 0) break;
+		lpt += 2;
+		ridx = strchr_c(lpt, '%');
+		if (ridx == UINT64_MAX) {
+			ret_str.append(lpt, str.data() + length);
+			break;
+		} else {
+			ret_str.append(lpt, lpt + ridx);
+		}
+	}
+	return ret_str;
+}
+
 #endif
