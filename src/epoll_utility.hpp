@@ -1,6 +1,6 @@
 #ifndef EU_HPP
 #define EU_HPP
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <cstdio>

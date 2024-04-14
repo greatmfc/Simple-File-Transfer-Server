@@ -2,8 +2,8 @@
 #define JSHPP
 #include <variant>
 #include <optional>
-#include <any>
 #include "util.hpp"
+#include "io.hpp"
 using val_type = std::variant<long long, bool, std::string, std::nullptr_t>;
 namespace mfcslib {
 	enum {
@@ -74,7 +74,7 @@ namespace mfcslib {
 	{
 	public:
 		json_parser() = default;
-		json_parser(File& in) {
+		json_parser(mfcslib::File& in) {
 			TypeArray<char> buf(in.size() + 1);
 			in.read(buf);
 			pt = buf.get_ptr();
@@ -141,7 +141,7 @@ namespace mfcslib {
 			return{};
 		}
 	public:
-		void parse(File& in) {
+		void parse(const mfcslib::File& in) {
 			TypeArray<char> buf(in.size() + 1);
 			in.read(buf);
 			pt = buf.get_ptr();

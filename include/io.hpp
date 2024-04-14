@@ -1,11 +1,14 @@
 #ifndef IO_HPP
 #define IO_HPP
 #include <stdexcept>
+#ifndef __unix__
 #include <filesystem>
+#endif // !__unix__
 #include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
 #include <arpa/inet.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "util.hpp"
 using std::out_of_range;
 using std::runtime_error;
@@ -37,7 +40,7 @@ namespace mfcslib {
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
 		}
-		auto read(TypeArray<Byte>& buf) {
+		auto read(TypeArray<Byte>& buf) const {
 			auto ret = ::read(_fd, buf.get_ptr(), buf.length());
 			if (ret < 0 && errno != EAGAIN) throw IO_exception(strerror(errno));
 			return ret;
@@ -69,10 +72,8 @@ namespace mfcslib {
 			return ret;
 		}
 		void close() {
-			if (_fd > 0) {
-				::close(_fd);
-				_fd = -1;
-			}
+			::close(_fd);
+			_fd = -1;
 		}
 		auto get_fd() const {
 			return _fd;
@@ -96,6 +97,114 @@ namespace mfcslib {
 	public:
 		File() = default;
 		File(const File&) = delete;
+#ifdef __unix__
+		File(const string& path) : _file_path(path) {}
+		File(File&& other) {
+			this->_fd = other._fd;
+			this->_file_stat = other._file_stat;
+			this->_file_path = other._file_path;
+			memset(&other._file_stat, 0, sizeof(struct stat));
+			other._file_path.clear();
+			other._fd = -1;
+		}
+		~File() {}
+
+		void operator=(const string& path) {
+			_file_path = path;
+		}
+		auto open(const string& path, bool trunc, int rwmode) {
+			int flag = 0;
+			switch (rwmode)
+			{
+			case 0: flag |= O_RDONLY; break;
+			case 1: flag |= O_WRONLY | O_CREAT; break;
+			default:flag |= O_RDWR | O_CREAT; break;
+			}
+			if (trunc) flag |= O_TRUNC;
+			else flag |= O_APPEND;
+			_fd = ::open(path.c_str(), flag, 0644);
+			if (_fd < 0) throw file_exception(strerror(errno));
+			fstat(_fd, &_file_stat);
+			if (!S_ISREG(_file_stat.st_mode)) {
+				::close(_fd);
+				throw std::invalid_argument(std::format("'{}' is not a regular file!\n", path));
+			}
+			_file_path = _get_path_from_fd(_fd);
+			return _fd;
+		}
+		auto open(bool trunc, int rwmode) {
+			int flag = 0;
+			switch (rwmode)
+			{
+			case 0: flag |= O_RDONLY; break;
+			case 1: flag |= O_WRONLY | O_CREAT; break;
+			default:flag |= O_RDWR | O_CREAT; break;
+			}
+			if (trunc) flag |= O_TRUNC;
+			else flag |= O_APPEND;
+			_fd = ::open(_file_path.c_str(), flag, 0644);
+			if (_fd < 0) throw file_exception(strerror(errno));
+			fstat(_fd, &_file_stat);
+			if (!S_ISREG(_file_stat.st_mode)) {
+				::close(_fd);
+				throw std::invalid_argument(std::format("'{}' is not a regular file!\n", _file_path));
+			}
+			_file_path = _get_path_from_fd(_fd);
+			return _fd;
+		}
+		auto open_read_only() {
+			_fd = ::open(_file_path.c_str(), O_RDONLY);
+			if (_fd < 0) throw file_exception(strerror(errno));
+			fstat(_fd, &_file_stat);
+			if (!S_ISREG(_file_stat.st_mode)) {
+				::close(_fd);
+				throw std::invalid_argument(std::format("'{}' is not a regular file!\n", _file_path));
+			}
+			_file_path = _get_path_from_fd(_fd);
+			return _fd;
+		}
+		bool is_existing() const {
+			return _fd > 0;
+		}
+		unsigned long size() const {
+			fstat(_fd, (struct stat*)&_file_stat);
+			return _file_stat.st_size;
+		}
+		string size_string() const {
+			fstat(_fd, (struct stat*)&_file_stat);
+			return std::to_string(_file_stat.st_size);
+		}
+		string get_parent() {
+			return _file_path.substr(0, _file_path.find_last_of('/'));
+		}
+		string get_absolute() {
+			return _file_path;
+		}
+		string filename() {
+			return _file_path.substr(_file_path.find_last_of('/') + 1);
+		}
+		string get_type() {
+			if (auto idx = _file_path.find_last_of('.'); idx != std::string::npos)
+				return _file_path.substr(idx);
+			else return {};
+		}
+		auto get_last_modified_time() const {
+			fstat(_fd, (struct stat*)&_file_stat);
+			return _file_stat.st_mtim;
+		}
+
+	private:
+		struct stat _file_stat;
+		string _file_path;
+
+		string _get_path_from_fd(int fd) {
+			char path[256]{ 0 };
+			char symlink_path[32]{ 0 };
+			snprintf(symlink_path, sizeof(symlink_path), "/proc/self/fd/%d", fd);
+			readlink(symlink_path, path, sizeof(path) - 1);
+			return path;
+		}
+#else
 		auto open(const string& file, bool trunc, int rwmode) {
 			int flag = 0;
 			switch (rwmode)
@@ -146,7 +255,8 @@ namespace mfcslib {
 		}
 
 	private:
-		path _path;
+		std::filesystem::path _path;
+#endif // __unix__
 	};
 
 	class NetworkSocket :public basic_io
@@ -253,5 +363,31 @@ namespace mfcslib {
 		~ServerSocket() {}
 	};
 
+	std::vector<std::string> list_all_files_in_directory(const char* path) {
+		auto dir_d = opendir(path);
+		if (dir_d == nullptr) {
+			return {};
+		}
+		std::vector<std::string> res;
+		struct dirent* ptr = readdir(dir_d);
+		std::string _path = path;
+		if (_path.back() != '/') {
+			_path += '/';
+		}
+		while ((ptr = readdir(dir_d)) != nullptr) {
+			if (strcmp(ptr->d_name, ".") == 0 || strcmp(ptr->d_name, "..") == 0) {
+				continue;
+			}
+			if (ptr->d_type == DT_REG) {
+				res.emplace_back(std::format("{}{}", _path, ptr->d_name));
+			} else if (ptr->d_type == DT_DIR) {
+				auto son_dir = list_all_files_in_directory(ptr->d_name);
+				for (auto& file : son_dir) {
+					res.emplace_back(_path + file);
+				}
+			}
+		}
+		return res;
+	}
 }
 #endif // !IO_HPP

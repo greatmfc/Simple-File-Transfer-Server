@@ -1,15 +1,14 @@
 #ifndef UTIL_HPP
 #define UTIL_HPP
-#include <stdexcept>
-#include <cstring>
-#include <unistd.h>
+#include "exception.hpp"
 #include <array>
 #include <chrono>
-#include <unordered_map>
+#include <cstring>
 #include <iostream>
-#include <vector>
 #include <ranges>
-#include "exception.hpp"
+#include <unistd.h>
+#include <unordered_map>
+#include <vector>
 namespace sc = std::chrono;
 using namespace std::chrono_literals;
 namespace mfcslib {

@@ -172,10 +172,9 @@ namespace mfcslib {
 		}
 
 		void add_last_modified(const File& file) {
-			struct stat st;
-			fstat(file.get_fd(), &st);
+			auto time = file.get_last_modified_time().tv_sec;
 			char buf[32]{};
-			strftime(buf, sizeof buf, "%a, %d %b %Y %T %Z", gmtime(&st.st_mtim.tv_sec));
+			strftime(buf, sizeof buf, "%a, %d %b %Y %T %Z", gmtime(&time));
 			_response += "Last-Modified: ";
 			_response += buf;
 			_response += "\r\n";
@@ -194,22 +193,13 @@ namespace mfcslib {
 		}
 
 		void add_Etag(const string& str) {
-			/*
-			std::stringstream stream;
-			stream << std::hex << st.st_mtim.tv_sec;
-			_response += "ETag: \"";
-			_response += stream.str() + '-';
-			stream.str("");
-			stream << std::hex << file.size();
-			*/
 			_response += "ETag: " + str + "\r\n";
 		}
 
 		string generate_Etag(const File& file) {
-			struct stat st;
-			fstat(file.get_fd(), &st);
-			return std::format("\"{:x}-{:x}\"", st.st_mtim.tv_sec, file.size());
+			return std::format("\"{:x}-{:x}\"", file.get_last_modified_time().tv_sec, file.size());
 		}
+
 	private:
 		std::string _response;
 		std::unordered_map<string, string> content_type = {
@@ -228,8 +218,7 @@ namespace mfcslib {
 		};
 	};
 
-	template<typename String_Type>
-	auto parse_http_request(const String_Type& raw_header) {
+	auto parse_http_request(const std::string& raw_header) {
 		std::unordered_map<std::string, std::string> parse_result;
 		auto header_lines = str_split(raw_header, "\r\n");
 		/*
@@ -271,31 +260,31 @@ namespace mfcslib {
 		}
 		return parse_result;
 	}
-}
 
-constexpr std::string decode_url(const std::string& str) {
-	auto lpt = str.data();
-	auto length = str.length();
-	auto ridx = str.find('%');
-	if (ridx == std::string::npos) return str;
-	std::string ret_str(lpt, ridx);
-	while (ridx < length) {
-		lpt += ridx + 1;
-		ret_str.push_back(hex_str_to_char(lpt));
-		if (*(lpt + 2) == '%') {
-			ridx = 2;
-			continue;
-		} else if (*(lpt + 2) == 0) break;
-		lpt += 2;
-		ridx = strchr_c(lpt, '%');
-		if (ridx == UINT64_MAX) {
-			ret_str.append(lpt, str.data() + length);
-			break;
-		} else {
-			ret_str.append(lpt, lpt + ridx);
+	constexpr std::string decode_url(const std::string& str) {
+		auto lpt = str.data();
+		auto length = str.length();
+		auto ridx = str.find('%');
+		if (ridx == std::string::npos) return str;
+		std::string ret_str(lpt, ridx);
+		while (ridx < length) {
+			lpt += ridx + 1;
+			ret_str.push_back(hex_str_to_char(lpt));
+			if (*(lpt + 2) == '%') {
+				ridx = 2;
+				continue;
+			} else if (*(lpt + 2) == 0) break;
+			lpt += 2;
+			ridx = strchr_c(lpt, '%');
+			if (ridx == UINT64_MAX) {
+				ret_str.append(lpt, str.data() + length);
+				break;
+			} else {
+				ret_str.append(lpt, lpt + ridx);
+			}
 		}
+		return ret_str;
 	}
-	return ret_str;
 }
 
 #endif

@@ -2,7 +2,6 @@
 #define EXCEPTION_HPP
 
 #include <string>
-#include <exception>
 using std::string;
 
 namespace mfcslib {

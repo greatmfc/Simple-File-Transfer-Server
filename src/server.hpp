@@ -1,25 +1,17 @@
 #ifndef S_HPP
 #define S_HPP
-#include <cstring>
-#include <cstdlib>
-#include <cassert>
-#include <sys/socket.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/sendfile.h>
-#include <iostream>
-#include <string_view>
-#include <unordered_map>
-#include <format>
 #include "../include/coroutine.hpp"
+#include "../include/http.hpp"
 #include "../include/io.hpp"
 #include "epoll_utility.hpp"
-#include "logger.hpp"
 #include "fields.h"
-#include "../include/http.hpp"
+#include "logger.hpp"
+#include <format>
+#include <iostream>
+#include <string_view>
+#include <sys/sendfile.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #ifndef MAXARRSZ
 #define MAXARRSZ 1024'000'000
 #define NUMSTOP 20'000
@@ -123,7 +115,8 @@ void receive_loop::loop()
 	uint16_t port = DEFAULT_PORT;
 	{
 		try {
-			File settings("./sft.json", false, RDONLY);
+			mfcslib::File settings("./sft.json");
+			settings.open_read_only();
 			json_parser js(settings);
 			json_conf[f_HttpPath] = "./";
 			json_conf[f_FileReceived] = "./";
@@ -140,7 +133,7 @@ void receive_loop::loop()
 					json_conf[key] = str;
 				if (key != f_DefaultPage) {
 					if (json_conf[key].back() != '/') json_conf[key] += '/';
-					create_directory(json_conf[key]);
+					mkdir(json_conf[key].data(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IWOTH);
 				}
 			}
 		}
@@ -284,14 +277,16 @@ co_handle receive_loop::handle_sft_file(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
-	auto name_size = connections[fd].requests.substr(2);
-	connections[fd].requests.clear();
-	LOG_INFO("Receiving file from:", connections[fd].get_ip_port_s(), ' ', name_size);
+	data_info& current_mission = connections[fd];
+	auto name_size = current_mission.requests.substr(2);
+	current_mission.requests.clear();
+	LOG_INFO("Receiving file from:", current_mission.get_ip_port_s(), ' ', name_size);
 	auto idx = name_size.find('/');
 	auto size = std::stoull(name_size.substr(idx + 1));
 	string name = json_conf[f_FileReceived];
 	name += name_size.substr(0, idx);
-	mfcslib::File output_file(name, true, O_WRONLY);
+	mfcslib::File output_file(name);
+	output_file.open(true, WRONLY);
 	try {
 		auto complete = false;
 		if (size < MAXARRSZ) {
@@ -304,13 +299,14 @@ co_handle receive_loop::handle_sft_file(int fd)
 				//cout << "Return from read:" << currentRet << endl;
 			#endif // DEBUG
 				if (currentRet < 0) {
+					current_mission.is_read_awaiting = true;
 					co_yield 1;
 					continue;
 				}
 				ret += currentRet;
 				bytesLeft = size - ret;
 			#ifdef DEBUG
-				progress_bar(ret, size);
+				mfcslib::progress_bar(ret, size);
 			#endif // DEBUG
 				if (bytesLeft <= 0 || currentRet == 0) break;
 			}
@@ -326,13 +322,14 @@ co_handle receive_loop::handle_sft_file(int fd)
 				while (ret < (MAXARRSZ - NUMSTOP)) {
 					currentReturn = bufferForFile.read(fd, ret, MAXARRSZ - ret);
 					if (currentReturn < 0) {
+						current_mission.is_read_awaiting = true;
 						co_yield 1;
 						continue;
 					}
 					ret += currentReturn;
 					bytesWritten += currentReturn;
 				#ifdef DEBUG
-					progress_bar(bytesWritten, size);
+					mfcslib::progress_bar(bytesWritten, size);
 				#endif // DEBUG
 					if (bytesWritten >= size || currentReturn == 0) break;
 				}
@@ -354,11 +351,12 @@ co_handle receive_loop::handle_sft_file(int fd)
 		}
 	}
 	catch (const mfcslib::basic_exception& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
+		LOG_ERROR("Client:", current_mission.get_ip_port_s(),' ', e.what());
 		LOG_ERROR("Not received complete file data.");
-		LOG_CLOSE(connections[fd].get_ip_port_s());
+		LOG_CLOSE(current_mission.get_ip_port_s());
 		close_connection(fd);
 	}
+	current_mission.is_read_awaiting = false;
 	co_return;
 }
 
@@ -372,16 +370,18 @@ void receive_loop::handle_sft_mesg(int fd)
 
 co_handle receive_loop::handle_sft_get_file(int fd)
 {
-	string& request = connections[fd].requests;
+	data_info& current_mission = connections[fd];
+	string& request = current_mission.requests;
 	LOG_INFO("Receive file request from:",
-		connections[fd].get_ip_port_s(), ' ',
+		current_mission.get_ip_port_s(), ' ',
 		&request[2]);
 	string full_path = json_conf[f_FileToSend];
 	full_path += &request[2];
 	if (full_path.back() == '\n') full_path.pop_back();
 	request.clear();
 	try {
-		File requested_file(full_path, false, O_RDONLY); //throw runtime_error
+		mfcslib::File requested_file(full_path); //throw runtime_error
+		requested_file.open_read_only();
 		string react_msg("/" + requested_file.size_string());
 		write(fd, react_msg.c_str(), react_msg.size() + 1);
 		ssize_t ret = 0;
@@ -389,7 +389,10 @@ co_handle receive_loop::handle_sft_get_file(int fd)
 		while (1) {
 			ret = recv(fd, &flag, sizeof(flag), 0);
 			if (ret >= 0 || errno != EAGAIN) break;
-			else co_yield 1;
+			else {
+				current_mission.is_read_awaiting = true;
+				co_yield 1;
+			}
 		}
 		if (flag != '1' || ret <= 0)
 			throw peer_exception("Receive flag failed.");
@@ -404,15 +407,16 @@ co_handle receive_loop::handle_sft_get_file(int fd)
 		#ifdef DEBUG
 			//cout << "Return from sendfile: " << ret << endl;
 		#endif // DEBUG
-			if (ret <= 0)
-			{
+			if (ret <= 0) {
 				if (errno == EAGAIN) {
+					current_mission.is_read_awaiting = false;
+					current_mission.is_write_awaiting = true;
 					co_yield 1;
 					continue;
 				}
 				else {
 					if (ret < 0) {
-						LOG_ERROR_C(connections[fd].get_ip_port_s());
+						LOG_ERROR_C(current_mission.get_ip_port_s());
 					#ifdef DEBUG
 						perror("Sendfile failed");
 					#endif // DEBUG
@@ -424,24 +428,26 @@ co_handle receive_loop::handle_sft_get_file(int fd)
 			send_size -= ret;
 		#ifdef DEBUG
 			//cout << "Bytes left: " << send_size << endl;
-			progress_bar((file_sz - send_size), file_sz);
+			mfcslib::progress_bar((file_sz - send_size), file_sz);
 		#endif // DEBUG
 		}
 	#ifdef DEBUG
 		cout << "\nFinishing file sending." << endl;
 	#endif // DEBUG
-		LOG_INFO("Success on sending file to client:", connections[fd].get_ip_s());
+		LOG_INFO("Success on sending file to client:", current_mission.get_ip_s());
 	}
 	catch (const mfcslib::peer_exception& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
-		LOG_CLOSE(connections[fd].get_ip_port_s());
+		LOG_ERROR("Client:", current_mission.get_ip_port_s(),' ', e.what());
+		LOG_CLOSE(current_mission.get_ip_port_s());
 		close_connection(fd);
 	}
 	catch (const mfcslib::file_exception& e) {
-		LOG_ERROR("Client:", connections[fd].get_ip_port_s(),' ', e.what());
+		LOG_ERROR("Client:", current_mission.get_ip_port_s(),' ', e.what());
 		char code = '0';
 		write(fd, &code, sizeof code);
 	}
+	current_mission.is_read_awaiting = false;
+	current_mission.is_write_awaiting = false;
 	co_return;
 }
 
@@ -491,7 +497,8 @@ co_handle receive_loop::handle_http(int fd)
 				target_http += json_conf[f_DefaultPage];
 			LOG_INFO("Client ", current_mission.get_ip_port_s(), " requests HTTP for: ", target_http);
 			loff_t off = 0;
-			File send_page(target_http, false, RDONLY);
+			mfcslib::File send_page = target_http;
+			send_page.open_read_only();
 			auto file_size = send_page.size();
 			auto sz = send_page.size() - off;
 			if (auto ite = parse_result.find(hd_range); ite != parse_result.end()) {

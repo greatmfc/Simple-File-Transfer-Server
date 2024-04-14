@@ -18,11 +18,10 @@
    '1' for a testing version, 
    '2' for an official release version.
 */
-
-#define sft_version 113131ul
 #define SFT_VERISON "1.13.13.1"
+#define sft_version 113131ul
 #define SFT_VER "Simple-File-Transfer/1.13.13.1"
-#define SRC_LAST_MODIFIED 20240323L
+#define SRC_LAST_MODIFIED 20240414L
 
 #endif // !SFT_H
 

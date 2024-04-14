@@ -1,13 +1,8 @@
 #ifndef CL_HPP
 #define CL_HPP
 #include <cstring>
-#include <cassert>
-#include <fcntl.h>
-#include <arpa/inet.h>
 #include <unistd.h>
-#include <sys/stat.h>
 #include <sys/sendfile.h>
-#include <exception>
 #include <iostream>
 #include "../include/io.hpp"
 #define BUFFER_SIZE 64
@@ -72,8 +67,8 @@ void get_file_from(mfcslib::NetworkSocket& tartget, const string& file) {
 		exit(1);
 	}
 	tartget.write("1");
-
-	mfcslib::File file_output_stream(file, true, O_WRONLY);
+	mfcslib::File file_output_stream(file);
+	file_output_stream.open(true, WRONLY);
 	auto msg_string = msg.to_string();
 	auto sizeOfFile = std::stoull(msg_string.substr(msg_string.find_last_of('/')+1));
 	if (sizeOfFile < MAXARRSZ) {
@@ -84,7 +79,7 @@ void get_file_from(mfcslib::NetworkSocket& tartget, const string& file) {
 			ret += tartget.read(bufferForFile, ret, bytesLeft);
 			bytesLeft = sizeOfFile - ret;
 			progress_bar(ret, sizeOfFile);
-			if (bytesLeft <= 0) break;
+			if (ret <= 0 || bytesLeft <= 0) break;
 		}
 		file_output_stream.write(bufferForFile);
 	}

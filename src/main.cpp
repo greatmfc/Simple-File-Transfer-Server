@@ -1,12 +1,6 @@
 #include <csignal>
 #include <iostream>
-#include <getopt.h>
-#include <cstring>
-#include <cstdio>
 #include <sys/stat.h>
-#include <vector>
-#include "../include/all_libs.h"
-#include "epoll_utility.hpp"
 #include "logger.hpp"
 #include "client.hpp"
 #include "server.hpp"
@@ -153,7 +147,8 @@ int main(int argc, char* argv[])
 		mfcslib::NetworkSocket server(ip, port);
 		if (path != nullptr) {
 			check_file(path);
-			mfcslib::File file(path, false, 0);
+			mfcslib::File file(path);
+			file.open_read_only();
 			send_file_to(server, file);
 		}
 		else if (mesg != nullptr) {

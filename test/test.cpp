@@ -27,10 +27,11 @@ auto main(int argc, char* argv[])->int {
 	auto port = 0;
 	parse_arg(argv[1], ip, port);
 	std::mt19937_64 engine(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
-	auto file = std::to_string(engine());
+	auto file = "temp_" + std::to_string(engine());
 	auto path = "./" + file;
 	auto content = file + std::to_string(engine()) + std::to_string(engine()) + std::to_string(engine());
-	mfcslib::File instance(file, true, O_RDWR);
+	mfcslib::File instance(file);
+	instance.open(true, RDWR);
 	instance.write(content);
 	mfcslib::NetworkSocket remote(ip.c_str(), (uint16_t)port);
 	send_msg_to(remote, "This is a test message.");

@@ -1,15 +1,11 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 #include <ctime>
-#include <string_view>
-#include <arpa/inet.h>
-#include <filesystem>
 #include "../include/json.hpp"
 #include "../include/io.hpp"
 using std::ios;
 using std::ofstream;
 using std::string;
-using std::filesystem::create_directory;
 
 enum log_enum
 {
@@ -61,13 +57,14 @@ public:
 			string path("./");
 			try
 			{
-				mfcslib::File settings("./sft.json", false, mfcslib::RDONLY);
+				mfcslib::File settings("./sft.json");
+				settings.open_read_only();
 				mfcslib::json_parser js(settings);
 				if (auto res = js.find("LogPath"); res) {
 					if (auto val = std::get_if<string>(&res.value()._val); val != nullptr) {
 						path = *val;
 						if (path.back() != '/') path += '/';
-						create_directory(path);
+						mkdir(path.data(), S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IWOTH);
 					}
 				}
 			}
