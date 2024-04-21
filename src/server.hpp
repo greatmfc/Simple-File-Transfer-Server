@@ -89,9 +89,9 @@ private:
 	static inline int pipe_fd[2];
 
 	int decide_action(int fd);
-	co_handle handle_sft_file(int fd);
+	co_handle handle_sft_upload(int fd);
 	void handle_sft_mesg(int fd);
-	co_handle handle_sft_get_file(int fd);
+	co_handle handle_sft_download(int fd);
 	void close_connection(int fd);
 	static void alarm_handler(int sig);
 	co_handle handle_http(int fd);
@@ -166,6 +166,7 @@ void receive_loop::loop()
 						auto res = localserver.accpet();
 						if (!res.available()) break;
 						LOG_ACCEPT(res.get_ip_port_s());
+						//LOG_DEBUG(std::format("Allocated file descriptor is: {}\n", react_fd));
 						auto accepted_fd = res.get_fd();
 						epoll_instance.add_fd_or_event(accepted_fd, false, true, EPOLLOUT);
 						epoll_instance.set_fd_no_block(accepted_fd);
@@ -178,6 +179,7 @@ void receive_loop::loop()
 			}
 			else if (epoll_instance.events[i].events & (EPOLLRDHUP | EPOLLHUP | EPOLLERR)) {
 				LOG_INFO("Disconnect from client: ",connections[react_fd].get_ip_port_s());
+				//LOG_DEBUG(std::format("Released file descriptor is: {}\n", react_fd));
 				close_connection(react_fd);
 				clock.erase_value(react_fd);
 				connections.erase(react_fd);
@@ -191,6 +193,7 @@ void receive_loop::loop()
 				auto timeout_list = clock.clear_expired();
 				for (const auto& i : timeout_list) {
 					LOG_INFO("Timeout client: ", connections[i].get_ip_port_s());
+					//LOG_DEBUG(std::format("Released file descriptor is: {}\n", react_fd));
 					close_connection(i);
 					connections.erase(i);
 				}
@@ -206,13 +209,13 @@ void receive_loop::loop()
 					switch (decide_action(react_fd))
 					{
 					case FILE_TYPE:
-						task = handle_sft_file(react_fd);
+						task = handle_sft_upload(react_fd);
 						break;
 					case MESSAGE_TYPE:
 						handle_sft_mesg(react_fd);
 						break;
 					case GET_TYPE:
-						task = handle_sft_get_file(react_fd);
+						task = handle_sft_download(react_fd);
 						break;
 					case HTTP_TYPE:
 						task = handle_http(react_fd);
@@ -223,6 +226,7 @@ void receive_loop::loop()
 							di.get_ip_port_s(),
 							" Received unknown request: ",
 							di.requests);
+						//LOG_DEBUG(std::format("Released file descriptor is: {}\n", react_fd));
 						close_connection(react_fd);
 						clock.erase_value(react_fd);
 						connections.erase(react_fd);
@@ -273,7 +277,7 @@ int receive_loop::decide_action(int fd)
 	return -1;
 }
 
-co_handle receive_loop::handle_sft_file(int fd)
+co_handle receive_loop::handle_sft_upload(int fd)
 {
 	char msg1 = '1';
 	write(fd, &msg1, sizeof(msg1));
@@ -368,7 +372,7 @@ void receive_loop::handle_sft_mesg(int fd)
 	connections[fd].requests.clear();
 }
 
-co_handle receive_loop::handle_sft_get_file(int fd)
+co_handle receive_loop::handle_sft_download(int fd)
 {
 	data_info& current_mission = connections[fd];
 	string& request = current_mission.requests;
@@ -477,6 +481,8 @@ co_handle receive_loop::handle_http(int fd)
 					auto ret = current_mission.read(buffer, sizeof buffer - 1);
 					if (ret == 0) {
 						close_connection(fd);
+						current_mission.is_write_awaiting = false;
+						current_mission.is_read_awaiting = false;
 						co_return;
 					}
 					else if (ret == -1) {
@@ -570,6 +576,9 @@ co_handle receive_loop::handle_http(int fd)
 			if (parse_result[hd_connection] == "close") {
 				close_connection(fd);
 				LOG_CLOSE(current_mission.get_ip_port_s());
+				//LOG_DEBUG(std::format("Released file descriptor is: {}\n", fd));
+				current_mission.is_read_awaiting = false;
+				current_mission.is_write_awaiting = false;
 				co_return;
 			}
 		}
